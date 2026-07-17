@@ -1,0 +1,11 @@
+{
+  "name": "Baycrest — Work Order Tracker",
+  "short_name": "Baycrest",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#21252B",
+  "theme_color": "#21252B",
+  "icons": [
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

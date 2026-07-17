@@ -1,0 +1,2613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Baycrest — Work Order Tracker</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-512.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Baycrest">
+<meta name="theme-color" content="#0F1320">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg: #F2EBDC;
+    --panel: #FBF8F1;
+    --card: #FFFFFF;
+    --line: #E1D5BE;
+    --line-soft: #ECE3D0;
+    --ink: #2E2718;
+    --ink-soft: #8C7D63;
+    --gold: #B8863A;
+    --gold-dark: #9C7130;
+    --gold-tint: rgba(184,134,58,0.14);
+    --status-open: #C1473A;
+    --status-open-tint: rgba(193,71,58,0.12);
+    --status-progress: #B8791E;
+    --status-progress-tint: rgba(184,121,30,0.12);
+    --status-closed: #3D8F5C;
+    --status-closed-tint: rgba(61,143,92,0.12);
+    --status-high: #A85A2A;
+    --msg-error-text: #96352A;
+    --msg-info-text: #2E5FA3;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  .app{ padding:32px 32px 64px; max-width:1400px; margin:0 auto; }
+
+  /* ---------- Header ---------- */
+  .topbar{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:16px;
+    margin-bottom:28px;
+    padding-bottom:20px;
+    border-bottom:1px solid var(--line);
+  }
+  .brand h1{
+    font-family:'Fraunces',serif;
+    font-optical-sizing:auto;
+    font-weight:600;
+    font-size:34px;
+    margin:0;
+    color:var(--ink);
+    letter-spacing:-0.01em;
+  }
+  .brand h1 span{ color:var(--gold); }
+  .brand p{
+    margin:5px 0 0;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;
+    color:var(--ink-soft);
+    letter-spacing:0.4px;
+    text-transform:uppercase;
+  }
+  .btn-new{
+    font-family:'Inter',sans-serif;
+    background:var(--gold);
+    color:#191408;
+    border:none;
+    padding:11px 20px;
+    font-size:14px;
+    font-weight:600;
+    border-radius:10px;
+    cursor:pointer;
+    transition:transform .12s ease, background .12s ease, box-shadow .12s ease;
+    box-shadow:0 1px 2px rgba(0,0,0,0.2);
+  }
+  .btn-new:hover{ background:#D8B25E; transform:translateY(-1px); box-shadow:0 4px 12px rgba(201,162,75,0.25); }
+  .btn-new:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
+
+  /* ---------- Controls ---------- */
+  .controls{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-bottom:26px;
+    align-items:center;
+  }
+  .controls input[type="text"]{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:10px 14px;
+    border-radius:10px;
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    min-width:220px;
+  }
+  .controls select{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:10px 14px;
+    border-radius:10px;
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+  }
+  .controls input:focus-visible, .controls select:focus-visible{
+    outline:2px solid var(--gold); outline-offset:1px;
+  }
+  .controls label{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    font-weight:500;
+    color:var(--ink-soft);
+    margin-right:6px;
+  }
+  .ctrl-group{ display:flex; align-items:center; }
+
+  /* ---------- Board ---------- */
+  .board{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(260px,1fr));
+    gap:20px;
+    align-items:start;
+  }
+  @media (max-width:850px){
+    .board{ grid-template-columns:1fr; }
+  }
+  .column{
+    background:var(--panel);
+    border-radius:16px;
+    padding:16px;
+    min-height:120px;
+    border:1px solid var(--line);
+    border-top:3px solid var(--col-color);
+    box-shadow: inset 0 1px 4px rgba(46,39,24,0.05);
+  }
+  .column.dragover{ background:#F5EEDF; border-color:var(--col-color); }
+  .col-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:16px;
+  }
+  .col-head h2{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:14.5px;
+    margin:0;
+    color:var(--ink);
+  }
+  .col-count{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;
+    background:var(--col-color);
+    color:#12151F;
+    padding:2px 9px;
+    border-radius:999px;
+    font-weight:600;
+  }
+  .col-empty{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    color:var(--ink-soft);
+    text-align:center;
+    padding:26px 8px;
+    border:1px dashed var(--line);
+    border-radius:12px;
+  }
+
+  /* ---------- Ticket card ---------- */
+  .ticket{
+    background:var(--card);
+    color:var(--ink);
+    border-radius:14px;
+    margin-bottom:12px;
+    padding:16px;
+    position:relative;
+    cursor:grab;
+    border:1px solid var(--line);
+    box-shadow:0 1px 3px rgba(46,39,24,0.08), 0 4px 10px rgba(46,39,24,0.04);
+    transition:transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+  }
+  .ticket:hover{ transform:translateY(-2px); box-shadow:0 10px 24px rgba(46,39,24,0.12); border-color:var(--gold); }
+  .ticket.dragging{ opacity:0.4; }
+  .ticket .perf{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:8px;
+  }
+  .ticket .perf span.hole{ display:none; }
+  .ticket .tnum{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    letter-spacing:0.4px;
+  }
+  .stamp{
+    position:absolute;
+    top:14px; right:14px;
+    font-family:'Inter',sans-serif;
+    font-size:10px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:0.4px;
+    padding:3px 9px;
+    border-radius:999px;
+  }
+  .stamp.urgent{ color:var(--status-open); background:var(--status-open-tint); }
+  .stamp.high{ color:var(--status-high); background:rgba(201,122,62,0.14); }
+  .stamp.medium{ color:var(--status-progress); background:var(--status-progress-tint); }
+  .stamp.low{ color:var(--status-closed); background:var(--status-closed-tint); }
+
+  .ticket h3{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:16.5px;
+    margin:2px 0 6px;
+    padding-right:64px;
+    line-height:1.3;
+    color:var(--ink);
+  }
+  .ticket p.desc{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin:0 0 12px;
+    line-height:1.45;
+    display:-webkit-box;
+    -webkit-line-clamp:3;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+  }
+  .ticket .meta{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    border-top:1px solid var(--line-soft);
+    padding-top:10px;
+  }
+  .ticket .actions{
+    display:flex;
+    gap:6px;
+    margin-top:12px;
+  }
+  .ticket .actions select{
+    flex:1;
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    padding:7px 8px;
+    border-radius:8px;
+    border:1px solid var(--line);
+    background:var(--panel);
+    color:var(--ink);
+  }
+  .icon-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    border-radius:8px;
+    width:30px;
+    cursor:pointer;
+    font-size:13px;
+  }
+  .icon-btn:hover{ background:var(--line-soft); color:var(--ink); }
+
+  /* ---------- Modal ---------- */
+  .overlay{
+    position:fixed; inset:0;
+    background:rgba(8,9,14,0.65);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:50;
+    padding:20px;
+  }
+  .overlay.open{ display:flex; }
+  .modal{
+    background:var(--panel);
+    border-radius:18px;
+    width:100%;
+    max-width:520px;
+    max-height:88vh;
+    overflow-y:auto;
+    padding:26px;
+    border:1px solid var(--line-soft);
+    box-shadow:0 20px 60px rgba(46,39,24,0.18);
+  }
+  .modal h2{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    margin:0 0 20px;
+    font-size:20px;
+    color:var(--ink);
+  }
+  .field{ margin-bottom:14px; }
+  .field label{
+    display:block;
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    font-weight:500;
+    color:var(--ink-soft);
+    margin-bottom:6px;
+  }
+  .field input, .field textarea, .field select{
+    width:100%;
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:10px 12px;
+    border-radius:10px;
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+  }
+  .field textarea{ resize:vertical; min-height:70px; }
+  .field input:focus-visible, .field textarea:focus-visible, .field select:focus-visible{
+    outline:2px solid var(--gold);
+  }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .modal-actions{
+    display:flex;
+    justify-content:flex-end;
+    gap:10px;
+    margin-top:22px;
+  }
+  .btn-secondary, .btn-primary, .btn-danger{
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    font-weight:600;
+    padding:10px 18px;
+    border-radius:10px;
+    cursor:pointer;
+    border:none;
+  }
+  .btn-secondary{ background:transparent; color:var(--ink-soft); border:1px solid var(--line); }
+  .btn-secondary:hover{ background:var(--line-soft); color:var(--ink); }
+  .btn-primary{ background:var(--gold); color:#191408; }
+  .btn-primary:hover{ background:#D8B25E; }
+  .btn-danger{ background:transparent; color:var(--status-open); margin-right:auto; border:1px solid transparent; }
+  .btn-danger:hover{ text-decoration:underline; }
+
+  /* ---------- Steps checklist ---------- */
+  .section-label{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin:0 0 8px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  .steps-list{ display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+  .step-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:8px 10px;
+  }
+  .step-row input[type="checkbox"]{
+    width:16px; height:16px;
+    accent-color:var(--gold);
+    flex-shrink:0;
+    cursor:pointer;
+  }
+  .step-row input[type="text"]{
+    flex:1;
+    background:none;
+    border:none;
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    padding:2px;
+  }
+  .step-row input[type="text"]:focus-visible{ outline:none; }
+  .step-row.done input[type="text"]{
+    text-decoration:line-through;
+    color:var(--ink-soft);
+  }
+  .step-remove{
+    background:none; border:none; color:var(--ink-soft);
+    cursor:pointer; font-size:16px; line-height:1; padding:2px 4px;
+    flex-shrink:0;
+  }
+  .step-remove:hover{ color:var(--status-open); }
+  .add-step-row{ display:flex; gap:8px; margin-bottom:4px; }
+  .add-step-row input{
+    flex:1;
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:9px 11px;
+    border-radius:10px;
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+  }
+  .add-step-row button{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    font-weight:600;
+    padding:0 16px;
+    border-radius:10px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .add-step-row button:hover{ background:var(--line-soft); }
+
+  /* ---------- Attachments ---------- */
+  .attach-grid{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .attach-thumb{
+    position:relative;
+    width:64px; height:64px;
+    border-radius:10px;
+    overflow:hidden;
+    border:1px solid var(--line);
+    background:var(--bg);
+  }
+  .attach-thumb img{
+    width:100%; height:100%;
+    object-fit:cover;
+    cursor:pointer;
+    display:block;
+  }
+  .attach-thumb .attach-remove{
+    position:absolute;
+    top:3px; right:3px;
+    width:18px; height:18px;
+    border-radius:50%;
+    background:rgba(10,10,14,0.8);
+    color:#fff;
+    border:none;
+    font-size:12px;
+    line-height:1;
+    cursor:pointer;
+  }
+  .attach-thumb .attach-remove:hover{ background:var(--status-open); }
+  .attach-name{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:9px;
+    color:var(--ink-soft);
+    position:absolute;
+    bottom:0; left:0; right:0;
+    background:rgba(10,10,14,0.75);
+    padding:2px 4px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .btn-attach{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    font-weight:600;
+    padding:8px 14px;
+    border-radius:10px;
+    border:1px dashed var(--line);
+    background:transparent;
+    color:var(--ink-soft);
+    cursor:pointer;
+  }
+  .btn-attach:hover{ background:var(--line-soft); color:var(--ink); }
+  .attach-hint{
+    font-family:'Inter',sans-serif;
+    font-size:11.5px;
+    color:var(--ink-soft);
+    margin:8px 0 0;
+  }
+
+  /* ---------- Card badges (progress / photos) ---------- */
+  .card-badges{
+    display:flex;
+    gap:8px;
+    margin-top:10px;
+  }
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:var(--ink-soft);
+    background:var(--line-soft);
+    padding:3px 8px;
+    border-radius:999px;
+  }
+  .badge.progress-complete{ background:var(--status-closed-tint); color:var(--status-closed); }
+
+  .card-steps, .card-photos{ margin-top:10px; }
+  .card-steps summary, .card-photos summary{
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink);
+    cursor:pointer;
+    list-style:none;
+    user-select:none;
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:7px 12px;
+    background:var(--line-soft);
+    border:1px solid var(--line);
+    border-radius:999px;
+  }
+  .card-steps summary:hover, .card-photos summary:hover{ background:var(--gold-tint); border-color:var(--gold); }
+  .card-steps summary::-webkit-details-marker, .card-photos summary::-webkit-details-marker{ display:none; }
+  .card-steps summary::before, .card-photos summary::before{
+    content:"›";
+    font-size:16px;
+    line-height:1;
+  }
+  .card-steps[open] summary::before, .card-photos[open] summary::before{
+    content:"⌄";
+  }
+  .card-steps-list{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    margin-top:10px;
+    padding-top:10px;
+    border-top:1px solid var(--line-soft);
+  }
+  .card-step-item{
+    display:flex;
+    align-items:flex-start;
+    gap:8px;
+    font-size:12.5px;
+    color:var(--ink);
+    cursor:pointer;
+  }
+  .card-step-item input[type="checkbox"]{
+    margin-top:2px;
+    accent-color:var(--gold);
+    flex-shrink:0;
+    cursor:pointer;
+  }
+  .card-step-item.done span{
+    text-decoration:line-through;
+    color:var(--ink-soft);
+  }
+
+  .loading-msg{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    color:var(--ink-soft);
+    text-align:center;
+    padding:40px;
+  }
+
+  /* ---------- Login gate ---------- */
+  .login-screen{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+  }
+  .login-card{
+    background:var(--panel);
+    border:1px solid var(--line-soft);
+    border-radius:20px;
+    padding:36px;
+    width:100%;
+    max-width:380px;
+    box-shadow:0 20px 60px rgba(46,39,24,0.15);
+  }
+  .login-card h1{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:28px;
+    margin:0 0 6px;
+    color:var(--ink);
+  }
+  .login-card h1 span{ color:var(--gold); }
+  .login-card p.tag{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    color:var(--ink-soft);
+    margin:0 0 26px;
+  }
+  .login-tabs{
+    display:flex;
+    gap:4px;
+    margin-bottom:20px;
+    border-bottom:1px solid var(--line);
+  }
+  .login-tab{
+    flex:1;
+    background:none;
+    border:none;
+    color:var(--ink-soft);
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    font-weight:600;
+    padding:10px 0;
+    cursor:pointer;
+    border-bottom:2px solid transparent;
+  }
+  .login-tab.active{ color:var(--ink); border-bottom-color:var(--gold); }
+  .login-msg{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    padding:10px 12px;
+    border-radius:10px;
+    margin-bottom:14px;
+    display:none;
+  }
+  .login-msg.error{ display:block; background:var(--status-open-tint); color:var(--msg-error-text); border:1px solid var(--status-open); }
+  .login-msg.info{ display:block; background:rgba(46,95,163,0.1); color:var(--msg-info-text); border:1px solid #4A7FD6; }
+  .login-card .field{ margin-bottom:14px; }
+  .login-card button[type="submit"]{
+    width:100%;
+    font-family:'Inter',sans-serif;
+    font-size:14.5px;
+    font-weight:600;
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background:var(--gold);
+    color:#191408;
+    cursor:pointer;
+    margin-top:6px;
+  }
+  .login-card button[type="submit"]:hover{ background:#D8B25E; }
+  .login-card button[type="submit"]:disabled{ opacity:0.6; cursor:default; }
+  .signout-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    font-weight:500;
+    padding:8px 14px;
+    border-radius:10px;
+    cursor:pointer;
+  }
+  .signout-btn:hover{ background:var(--line-soft); color:var(--ink); }
+
+  /* ---------- Admin panel ---------- */
+  .admin-property{
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:16px;
+    margin-top:16px;
+  }
+  .admin-property h3{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:16px;
+    margin:0 0 12px;
+    color:var(--ink);
+  }
+  .admin-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:8px 0;
+    border-bottom:1px solid var(--line-soft);
+    font-size:13px;
+  }
+  .admin-row:last-child{ border-bottom:none; }
+  .admin-row .tag-pill{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    background:var(--panel);
+    padding:2px 8px;
+    border-radius:999px;
+    margin-left:8px;
+  }
+  .admin-remove{
+    background:none;
+    border:none;
+    color:var(--ink-soft);
+    cursor:pointer;
+    font-size:13px;
+  }
+  .admin-remove:hover{ color:var(--status-open); }
+  .admin-invite-row{ display:flex; gap:8px; margin-top:12px; }
+  .admin-invite-row input{
+    flex:1;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:9px 11px;
+    border-radius:10px;
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+  }
+  .admin-section-label{
+    font-family:'Inter',sans-serif;
+    font-size:11.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+    margin:14px 0 4px;
+  }
+  .admin-empty{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    color:var(--ink-soft);
+    padding:6px 0;
+  }
+
+  /* ---------- Reminders ---------- */
+  .reminders-banner{
+    display:none;
+    flex-direction:column;
+    gap:8px;
+    background:var(--panel);
+    border:1px solid var(--status-progress);
+    border-left:4px solid var(--status-progress);
+    border-radius:14px;
+    padding:14px 16px;
+    margin-bottom:20px;
+  }
+  .reminders-banner.show{ display:flex; }
+  .reminders-banner-title{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:13px;
+    color:var(--status-progress);
+    margin:0;
+  }
+  .reminder-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    font-size:13px;
+    background:var(--bg);
+    border-radius:10px;
+    padding:9px 12px;
+  }
+  .reminder-item .r-info{ display:flex; flex-direction:column; gap:2px; }
+  .reminder-item .r-time{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;
+    color:var(--ink-soft);
+  }
+  .reminder-item button{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--ink-soft);
+    border-radius:8px;
+    padding:5px 11px;
+    font-size:11.5px;
+    font-family:'Inter',sans-serif;
+    font-weight:500;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .reminder-item button:hover{ background:var(--line-soft); color:var(--ink); }
+
+  .reminder-toggle-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .reminder-toggle-row input[type="checkbox"]{
+    width:16px; height:16px;
+    accent-color:var(--gold);
+  }
+  .reminder-fields{
+    display:none;
+    gap:10px;
+    padding:12px;
+    background:var(--bg);
+    border-radius:12px;
+    border:1px solid var(--line);
+  }
+  .reminder-fields.show{ display:flex; flex-direction:column; }
+  .reminder-type-row{ display:flex; gap:16px; margin-bottom:8px; flex-wrap:wrap; }
+  .reminder-type-row label{
+    display:flex; align-items:center; gap:5px;
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    color:var(--ink-soft);
+  }
+
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+</style>
+</head>
+<body>
+
+<div class="login-screen" id="loginScreen" style="display:none;">
+  <div class="login-card">
+    <h1>Baycrest<span>.</span></h1>
+    <p class="tag">SIGN IN TO SYNC YOUR BOARD ACROSS DEVICES</p>
+    <div class="login-tabs">
+      <button type="button" class="login-tab active" id="tabSignIn">Sign in</button>
+      <button type="button" class="login-tab" id="tabSignUp">Create account</button>
+    </div>
+    <div class="login-msg" id="loginMsg"></div>
+    <form id="authForm">
+      <div class="field">
+        <label for="authEmail">Email</label>
+        <input type="email" id="authEmail" required autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="authPassword">Password</label>
+        <input type="password" id="authPassword" required minlength="6" autocomplete="current-password">
+      </div>
+      <button type="submit" id="authSubmit">Sign in</button>
+    </form>
+  </div>
+</div>
+
+<div class="app" id="appRoot" style="display:none;">
+
+  <div class="topbar">
+    <div class="brand">
+      <h1>Baycrest<span>.</span></h1>
+      <p id="subtitle">LOADING WORK ORDERS…</p>
+    </div>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <select id="propertySelect" style="display:none;"></select>
+      <button class="signout-btn" id="btnImportEmail" style="display:none;">📋 Import Violation Email</button>
+      <button class="signout-btn" id="btnEnableNotifs" style="display:none;">🔔 Enable notifications</button>
+      <button class="signout-btn" id="btnAdmin" style="display:none;">Manage properties</button>
+      <button class="signout-btn" id="btnSignOut" style="display:none;">Sign out</button>
+      <button class="btn-new" id="btnNew">+ New Ticket</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl-group">
+      <input type="text" id="search" placeholder="Search tickets…">
+    </div>
+    <div class="ctrl-group">
+      <label for="filterPriority">Priority</label>
+      <select id="filterPriority">
+        <option value="all">All</option>
+        <option value="urgent">Urgent</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+    <div class="ctrl-group">
+      <label for="sortBy">Sort</label>
+      <select id="sortBy">
+        <option value="priority">Priority</option>
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="due">Due date</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="reminders-banner" id="remindersBanner">
+    <p class="reminders-banner-title">🔔 Due reminders</p>
+    <div id="remindersList"></div>
+  </div>
+
+  <div class="board" id="board"></div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="modalTitle">New Ticket</h2>
+    <form id="ticketForm">
+      <input type="hidden" id="ticketId">
+      <div class="field">
+        <label for="title">Title</label>
+        <input type="text" id="title" required maxlength="80">
+      </div>
+      <div class="field">
+        <label for="description">Description</label>
+        <textarea id="description" maxlength="600"></textarea>
+      </div>
+      <div class="field" id="ticketPropertyField" style="display:none;">
+        <label for="ticketProperty">Building</label>
+        <select id="ticketProperty"></select>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label for="priority">Priority</label>
+          <select id="priority">
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
+            <option value="medium" selected>Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="dueDate">Due date</label>
+          <input type="date" id="dueDate">
+        </div>
+      </div>
+
+      <div class="field">
+        <p class="section-label"><span>Steps</span><span id="stepsProgress"></span></p>
+        <div class="steps-list" id="stepsList"></div>
+        <div class="add-step-row">
+          <input type="text" id="newStepText" placeholder="Add a step, e.g. Order replacement part">
+          <button type="button" id="btnAddStep">Add</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <p class="section-label"><span>Photos &amp; files</span></p>
+        <div class="attach-grid" id="attachGrid"></div>
+        <button type="button" class="btn-attach" id="btnAttach">+ Add photo</button>
+        <input type="file" id="fileInput" accept="image/*" multiple style="display:none;">
+        <p class="attach-hint">Photos are resized and stored with the ticket. Keep it to a few per ticket.</p>
+      </div>
+
+      <div class="field">
+        <div class="reminder-toggle-row">
+          <input type="checkbox" id="reminderEnabled">
+          <label for="reminderEnabled" style="margin:0;">Set a reminder</label>
+        </div>
+        <div class="reminder-fields" id="reminderFields">
+          <div class="reminder-type-row">
+            <label><input type="radio" name="reminderType" value="once" checked> One-time</label>
+            <label><input type="radio" name="reminderType" value="daily"> Daily</label>
+            <label><input type="radio" name="reminderType" value="weekly"> Weekly until due</label>
+          </div>
+          <div class="row2" id="reminderOnceFields">
+            <div class="field" style="margin-bottom:0;">
+              <label for="reminderDate">Date</label>
+              <input type="date" id="reminderDate">
+            </div>
+            <div class="field" style="margin-bottom:0;">
+              <label for="reminderTimeOnce">Time</label>
+              <input type="time" id="reminderTimeOnce">
+            </div>
+          </div>
+          <div class="field" id="reminderDailyFields" style="display:none; margin-bottom:0;">
+            <label for="reminderTimeDaily">Time, every day</label>
+            <input type="time" id="reminderTimeDaily">
+          </div>
+          <div class="field" id="reminderWeeklyFields" style="display:none; margin-bottom:0;">
+            <label for="reminderTimeWeekly">Time, once a week (same day as created) until the due date</label>
+            <input type="time" id="reminderTimeWeekly">
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-danger" id="btnDelete" style="display:none;">Delete</button>
+        <button type="button" class="btn-secondary" id="btnCancel">Cancel</button>
+        <button type="submit" class="btn-primary" id="btnSave">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="setupScreen">
+  <div class="modal">
+    <h2>Set up your first property</h2>
+    <div class="login-msg" id="setupMsg"></div>
+    <div class="field">
+      <label for="setupPropertyName">Property name</label>
+      <input type="text" id="setupPropertyName" placeholder="e.g. Maple Street Apartments">
+    </div>
+    <p class="attach-hint" style="margin-bottom:14px;">If your manager already invited you as an employee, sign out and back in — check that they used the exact email you signed up with.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" id="btnSetupCreate">Create property</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="adminOverlay">
+  <div class="modal" style="max-width:600px;">
+    <h2>Manage properties</h2>
+    <div class="field">
+      <label for="newPropertyName">Add a new property</label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="newPropertyName" placeholder="Property name">
+        <button type="button" class="btn-attach" id="btnAddProperty" style="white-space:nowrap;">+ Add</button>
+      </div>
+    </div>
+    <div id="adminPropertiesList"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="btnCloseAdmin">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="importOverlay">
+  <div class="modal" style="max-width:580px;">
+    <h2>Import Violation Email</h2>
+    <div class="login-msg" id="importMsg"></div>
+    <div class="field" id="importPropertyField">
+      <label for="importProperty">Building</label>
+      <select id="importProperty"></select>
+    </div>
+    <div class="field">
+      <label for="importText">Paste the full email text</label>
+      <textarea id="importText" style="min-height:220px;" placeholder="Paste the Jack Jaffa violation notice here — subject line and body both fine."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="btnCloseImport">Cancel</button>
+      <button type="button" class="btn-primary" id="btnDoImport">Create Work Order</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STATUSES = [
+  { key:'open',        label:'Open',         color:'var(--accent-open)' },
+  { key:'in_progress', label:'In Progress',  color:'var(--accent-progress)' },
+  { key:'closed',      label:'Closed',       color:'var(--accent-closed)' },
+];
+const PRIORITY_ORDER = { urgent:0, high:1, medium:2, low:3 };
+const STORAGE_KEY = 'work_orders';
+
+/* ---------- Supabase (only used for cross-device sync when this file
+   is downloaded and opened outside the Claude chat). Fill these in
+   with your own project's values — see setup notes at the bottom of
+   this file's chat message. The anon key is meant to be public; real
+   security comes from Row Level Security + login, both set up below. ---------- */
+const SUPABASE_URL = 'https://aupqrnyfkajkstxggawt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1cHFybnlma2Fqa3N0eGdnYXd0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MjEyOTYsImV4cCI6MjA5OTA5NzI5Nn0.maH2EqNDhm1s7nplrFombLtk95HEPqZriVp8TwSVIs0';
+const supabaseConfigured = SUPABASE_URL.startsWith('http') && SUPABASE_ANON_KEY.length > 20;
+const supabaseClient = supabaseConfigured ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+let currentUserId = null;
+let currentUserEmail = null;
+
+/* Multi-property mode only applies to the standalone Supabase-backed
+   deployment. Inside the Claude chat panel, or with no backend wired
+   up, the app stays a single personal board (no properties/roles). */
+const multiPropertyMode = supabaseConfigured && !hasCloudStorageSafe();
+function hasCloudStorageSafe(){
+  return (typeof window.storage !== 'undefined' && window.storage !== null);
+}
+
+let properties = [];        // [{id, name, role: 'owner'|'employee'}]
+let selectedPropertyId = null;
+function currentRole(){
+  const p = properties.find(p => p.id === selectedPropertyId);
+  return p ? p.role : 'owner';
+}
+
+let tickets = [];
+let nextNum = 1;
+let editingId = null;
+let dragId = null;
+let currentSteps = [];
+let currentAttachments = [];
+let storageFailed = false;
+const expandedStepsIds = new Set();
+const expandedAttachIds = new Set();
+
+function migrate(t){
+  if(!Array.isArray(t.steps)) t.steps = [];
+  if(!Array.isArray(t.attachments)) t.attachments = [];
+  if(t.reminder === undefined) t.reminder = null;
+  if(t.status === 'half_done') t.status = 'in_progress';
+  return t;
+}
+
+/* ---------- Storage: use Claude's persistent storage when available
+   (inside the chat artifact panel), otherwise fall back to this
+   browser's localStorage (e.g. when the file is downloaded and
+   opened directly). ---------- */
+const hasCloudStorage = (typeof window.storage !== 'undefined' && window.storage !== null);
+
+async function storageGet(key){
+  if(hasCloudStorage){
+    try{ return await window.storage.get(key, false); }
+    catch(e){ return null; }
+  }
+  if(supabaseConfigured && currentUserId){
+    try{
+      const { data, error } = await supabaseClient
+        .from('boards')
+        .select('data')
+        .eq('user_id', currentUserId)
+        .maybeSingle();
+      if(error) throw error;
+      return (data && data.data) ? { key, value: JSON.stringify(data.data), shared:false } : null;
+    }catch(e){ console.error('Supabase load failed', e); return null; }
+  }
+  try{
+    const raw = localStorage.getItem(key);
+    return raw ? { key, value: raw, shared:false } : null;
+  }catch(e){ return null; }
+}
+
+async function storageSet(key, value){
+  if(hasCloudStorage){
+    try{ return await window.storage.set(key, value, false); }
+    catch(e){ console.error('Cloud storage save failed', e); return null; }
+  }
+  if(supabaseConfigured && currentUserId){
+    try{
+      const parsed = JSON.parse(value);
+      const { error } = await supabaseClient
+        .from('boards')
+        .upsert({ user_id: currentUserId, data: parsed, updated_at: new Date().toISOString() });
+      if(error) throw error;
+      return { key, value, shared:false };
+    }catch(e){ console.error('Supabase save failed', e); return null; }
+  }
+  try{
+    localStorage.setItem(key, value);
+    return { key, value, shared:false };
+  }catch(e){ console.error('Local storage save failed', e); return null; }
+}
+
+const board = document.getElementById('board');
+const subtitle = document.getElementById('subtitle');
+
+function ticketNumber(n){ return 'WO-' + String(n).padStart(4,'0'); }
+
+function fmtDate(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined,{month:'short', day:'numeric'});
+}
+
+async function loadTickets(){
+  if(multiPropertyMode){
+    try{
+      const { data, error } = await supabaseClient
+        .from('tickets')
+        .select('*')
+        .eq('property_id', selectedPropertyId)
+        .order('created_at', { ascending: true });
+      if(error) throw error;
+      tickets = (data || []).map(dbRowToTicket);
+    }catch(e){
+      console.error('Could not load tickets', e);
+    }
+    render();
+    return;
+  }
+  try{
+    const res = await storageGet(STORAGE_KEY);
+    if(res && res.value){
+      const parsed = JSON.parse(res.value);
+      tickets = (parsed.tickets || []).map(migrate);
+      nextNum = parsed.nextNum || (tickets.length + 1);
+    }
+  }catch(e){
+    console.error('Could not load tickets', e);
+    // keep whatever is already in memory rather than wiping the board
+  }
+  render();
+}
+
+async function saveTickets(){
+  // Only used in single-board mode (Claude storage / localStorage).
+  // Multi-property mode saves per-action via dbCreateTicket/dbUpdateTicket/etc.
+  const result = await storageSet(STORAGE_KEY, JSON.stringify({ tickets, nextNum }));
+  storageFailed = !result;
+}
+
+function dbRowToTicket(row){
+  return {
+    id: row.id,
+    propertyId: row.property_id,
+    num: row.seq,
+    title: row.title,
+    description: row.description || '',
+    priority: row.priority,
+    status: row.status,
+    dueDate: row.due_date || '',
+    createdAt: row.created_at,
+    steps: row.steps || [],
+    attachments: row.attachments || [],
+    reminder: row.reminder || null
+  };
+}
+
+async function dbCreateTicket(fields, propertyIdOverride){
+  const { error } = await supabaseClient.from('tickets').insert({
+    property_id: propertyIdOverride || selectedPropertyId,
+    title: fields.title,
+    description: fields.description,
+    priority: fields.priority,
+    due_date: fields.dueDate || null,
+    status: fields.status,
+    steps: fields.steps,
+    attachments: fields.attachments,
+    reminder: fields.reminder,
+    created_by: currentUserId
+  });
+  if(error){ console.error('Create ticket failed', error); storageFailed = true; }
+  else { storageFailed = false; }
+}
+
+async function dbUpdateTicket(id, fields){
+  const payload = {
+    title: fields.title,
+    description: fields.description,
+    priority: fields.priority,
+    due_date: fields.dueDate || null,
+    status: fields.status,
+    steps: fields.steps,
+    attachments: fields.attachments,
+    reminder: fields.reminder
+  };
+  if(fields.propertyId) payload.property_id = fields.propertyId;
+  const { error } = await supabaseClient.from('tickets').update(payload).eq('id', id);
+  if(error){ console.error('Update ticket failed', error); storageFailed = true; }
+  else { storageFailed = false; }
+}
+
+async function dbDeleteTicket(id){
+  const { error } = await supabaseClient.from('tickets').delete().eq('id', id);
+  if(error){ console.error('Delete ticket failed', error); storageFailed = true; }
+  else { storageFailed = false; }
+}
+
+async function dbSetStatus(id, status){
+  const { error } = await supabaseClient.from('tickets').update({ status }).eq('id', id);
+  if(error){ console.error('Status update failed', error); storageFailed = true; }
+  else { storageFailed = false; }
+}
+
+async function dbToggleStep(id, stepId, done){
+  const { error } = await supabaseClient.rpc('toggle_step', {
+    p_ticket_id: id, p_step_id: stepId, p_done: done
+  });
+  if(error){ console.error('Step toggle failed', error); storageFailed = true; }
+  else { storageFailed = false; }
+}
+
+async function dbAddAttachment(id, attachment){
+  const { error } = await supabaseClient.rpc('add_attachment', {
+    p_ticket_id: id, p_attachment: attachment
+  });
+  if(error){ console.error('Add attachment failed', error); storageFailed = true; return false; }
+  storageFailed = false;
+  return true;
+}
+
+async function dbRemoveAttachment(id, attachmentId){
+  const { error } = await supabaseClient.rpc('remove_attachment', {
+    p_ticket_id: id, p_attachment_id: attachmentId
+  });
+  if(error){ console.error('Remove attachment failed', error); storageFailed = true; }
+  else { storageFailed = false; }
+}
+
+async function dbClearReminder(id){
+  const { error } = await supabaseClient.rpc('clear_reminder', { p_ticket_id: id });
+  if(error){ console.error('Clear reminder failed', error); storageFailed = true; }
+  else { storageFailed = false; }
+}
+
+async function dbSnoozeReminder(id, dateStr){
+  const { error } = await supabaseClient.rpc('snooze_reminder_today', { p_ticket_id: id, p_date: dateStr });
+  if(error){ console.error('Snooze reminder failed', error); storageFailed = true; }
+  else { storageFailed = false; }
+}
+
+/* ---------- Properties & roles ---------- */
+async function loadProperties(){
+  const owned = await supabaseClient.from('properties').select('id, name').eq('owner_id', currentUserId);
+  const member = await supabaseClient.from('memberships').select('property_id, properties(id, name)').eq('user_id', currentUserId);
+
+  properties = [];
+  (owned.data || []).forEach(p => properties.push({ id: p.id, name: p.name, role: 'owner' }));
+  (member.data || []).forEach(m => {
+    if(m.properties && !properties.some(p => p.id === m.properties.id)){
+      properties.push({ id: m.properties.id, name: m.properties.name, role: 'employee' });
+    }
+  });
+
+  if(properties.length === 0){
+    showSetupScreen();
+    return false;
+  }
+
+  if(!selectedPropertyId || !properties.some(p => p.id === selectedPropertyId)){
+    selectedPropertyId = properties[0].id;
+  }
+  renderPropertySelector();
+  document.getElementById('btnAdmin').style.display = properties.some(p => p.role === 'owner') ? 'inline-block' : 'none';
+  document.getElementById('btnImportEmail').style.display = properties.some(p => p.role === 'owner') ? 'inline-block' : 'none';
+  return true;
+}
+
+function renderPropertySelector(){
+  const sel = document.getElementById('propertySelect');
+  sel.innerHTML = properties.map(p =>
+    `<option value="${p.id}" ${p.id === selectedPropertyId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+  ).join('');
+  sel.style.display = properties.length > 1 ? 'inline-block' : 'none';
+}
+
+function showSetupScreen(){
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('setupScreen').classList.add('open');
+}
+
+document.getElementById('propertySelect').addEventListener('change', async (e) => {
+  selectedPropertyId = e.target.value;
+  await loadTickets();
+});
+
+document.getElementById('btnSetupCreate').addEventListener('click', async () => {
+  const msgEl = document.getElementById('setupMsg');
+  msgEl.className = 'login-msg';
+  msgEl.textContent = '';
+  const name = document.getElementById('setupPropertyName').value.trim();
+  if(!name){
+    msgEl.className = 'login-msg error';
+    msgEl.textContent = 'Enter a property name first.';
+    return;
+  }
+  const btn = document.getElementById('btnSetupCreate');
+  btn.disabled = true;
+  try{
+    const { data, error } = await supabaseClient.from('properties')
+      .insert({ name, owner_id: currentUserId })
+      .select('id, name')
+      .single();
+    if(error) throw error;
+
+    // Best-effort: bring over any tickets from the old single-board setup.
+    try{
+      const old = await supabaseClient.from('boards').select('data').eq('user_id', currentUserId).maybeSingle();
+      const oldTickets = (old.data && old.data.data && old.data.data.tickets) || [];
+      for(const t of oldTickets){
+        await supabaseClient.from('tickets').insert({
+          property_id: data.id,
+          title: t.title, description: t.description || '', priority: t.priority || 'medium',
+          status: t.status === 'half_done' ? 'in_progress' : (t.status || 'open'),
+          due_date: t.dueDate || null,
+          steps: t.steps || [], attachments: t.attachments || [],
+          created_by: currentUserId
+        });
+      }
+    }catch(e){ /* no old data, that's fine */ }
+
+    document.getElementById('setupScreen').classList.remove('open');
+    await loadProperties();
+    showApp();
+    await loadTickets();
+  }catch(err){
+    console.error('Create property failed', err);
+    msgEl.className = 'login-msg error';
+    msgEl.textContent = (err && err.message) ? err.message : 'Could not create the property. Check the console for details.';
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+/* ---------- Admin panel ---------- */
+document.getElementById('btnAdmin').addEventListener('click', openAdminPanel);
+document.getElementById('btnCloseAdmin').addEventListener('click', () => {
+  document.getElementById('adminOverlay').classList.remove('open');
+});
+document.getElementById('adminOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'adminOverlay') document.getElementById('adminOverlay').classList.remove('open');
+});
+
+document.getElementById('btnAddProperty').addEventListener('click', async () => {
+  const input = document.getElementById('newPropertyName');
+  const name = input.value.trim();
+  if(!name) return;
+  try{
+    const { error } = await supabaseClient.from('properties').insert({ name, owner_id: currentUserId });
+    if(error) throw error;
+    input.value = '';
+    await loadProperties();
+    await renderAdminPanel();
+  }catch(err){
+    console.error('Add property failed', err);
+    alert('Could not add the property: ' + (err.message || 'unknown error'));
+  }
+});
+
+async function openAdminPanel(){
+  document.getElementById('adminOverlay').classList.add('open');
+  await renderAdminPanel();
+}
+
+async function renderAdminPanel(){
+  const container = document.getElementById('adminPropertiesList');
+  const owned = properties.filter(p => p.role === 'owner');
+  if(owned.length === 0){
+    container.innerHTML = '<p class="admin-empty">You don\'t own any properties yet — add one above.</p>';
+    return;
+  }
+  container.innerHTML = owned.map(p => `<div class="admin-property" data-property-id="${p.id}">
+    <h3>${escapeHtml(p.name)}</h3>
+    <div class="admin-section-label">Active employees</div>
+    <div class="admin-members" data-property-id="${p.id}"><span class="admin-empty">Loading…</span></div>
+    <div class="admin-section-label">Pending invites</div>
+    <div class="admin-invites" data-property-id="${p.id}"><span class="admin-empty">Loading…</span></div>
+    <div class="admin-invite-row">
+      <input type="email" placeholder="employee@email.com" class="invite-email-input">
+      <button type="button" class="btn-attach invite-btn" data-property-id="${p.id}">Invite</button>
+    </div>
+  </div>`).join('');
+
+  container.querySelectorAll('.invite-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const propertyId = btn.dataset.propertyId;
+      const input = btn.parentElement.querySelector('.invite-email-input');
+      const email = input.value.trim().toLowerCase();
+      if(!email) return;
+      const { error } = await supabaseClient.from('invites').insert({ email, property_id: propertyId });
+      if(error){ console.error(error); return; }
+      input.value = '';
+      await renderPropertyPeople(propertyId);
+    });
+  });
+
+  for(const p of owned){
+    await renderPropertyPeople(p.id);
+  }
+}
+
+async function renderPropertyPeople(propertyId){
+  const membersEl = document.querySelector(`.admin-members[data-property-id="${propertyId}"]`);
+  const invitesEl = document.querySelector(`.admin-invites[data-property-id="${propertyId}"]`);
+
+  const members = await supabaseClient.from('memberships').select('user_id, email').eq('property_id', propertyId);
+  const invites = await supabaseClient.from('invites').select('id, email').eq('property_id', propertyId).eq('used', false);
+
+  if(members.error){
+    console.error('Load members failed', members.error);
+    if(membersEl) membersEl.innerHTML = `<span class="admin-empty">Could not load: ${escapeHtml(members.error.message)}</span>`;
+  }
+  if(invites.error){
+    console.error('Load invites failed', invites.error);
+    if(invitesEl) invitesEl.innerHTML = `<span class="admin-empty">Could not load: ${escapeHtml(invites.error.message)}</span>`;
+  }
+
+  if(membersEl && !members.error){
+    const list = members.data || [];
+    membersEl.innerHTML = list.length
+      ? list.map(m => `<div class="admin-row"><span>${escapeHtml(m.email)}</span><button type="button" class="admin-remove" data-user-id="${m.user_id}" data-property-id="${propertyId}">Remove</button></div>`).join('')
+      : '<span class="admin-empty">No employees yet.</span>';
+    membersEl.querySelectorAll('.admin-remove').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await supabaseClient.from('memberships').delete()
+          .eq('user_id', btn.dataset.userId).eq('property_id', btn.dataset.propertyId);
+        await renderPropertyPeople(propertyId);
+      });
+    });
+  }
+
+  if(invitesEl && !invites.error){
+    const list = invites.data || [];
+    invitesEl.innerHTML = list.length
+      ? list.map(i => `<div class="admin-row"><span>${escapeHtml(i.email)}</span><button type="button" class="admin-remove" data-invite-id="${i.id}">Revoke</button></div>`).join('')
+      : '<span class="admin-empty">None pending.</span>';
+    invitesEl.querySelectorAll('.admin-remove').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await supabaseClient.from('invites').delete().eq('id', btn.dataset.inviteId);
+        await renderPropertyPeople(propertyId);
+      });
+    });
+  }
+}
+
+function openModal(ticket){
+  editingId = ticket ? ticket.id : null;
+  document.getElementById('modalTitle').textContent = ticket ? 'Edit Ticket' : 'New Ticket';
+  document.getElementById('ticketId').value = ticket ? ticket.id : '';
+  document.getElementById('title').value = ticket ? ticket.title : '';
+  document.getElementById('description').value = ticket ? ticket.description : '';
+  document.getElementById('priority').value = ticket ? ticket.priority : 'medium';
+  document.getElementById('dueDate').value = ticket ? (ticket.dueDate || '') : '';
+  document.getElementById('btnDelete').style.display = ticket ? 'inline-block' : 'none';
+
+  currentSteps = ticket ? ticket.steps.map(s => ({...s})) : [];
+  currentAttachments = ticket ? ticket.attachments.map(a => ({...a})) : [];
+  renderStepsList();
+  renderAttachGrid();
+  populateReminderFields(ticket ? ticket.reminder : null);
+
+  const propField = document.getElementById('ticketPropertyField');
+  if(ticket && multiPropertyMode){
+    const owned = properties.filter(p => p.role === 'owner');
+    if(owned.length){
+      propField.style.display = '';
+      const sel = document.getElementById('ticketProperty');
+      sel.innerHTML = owned.map(p =>
+        `<option value="${p.id}" ${p.id === ticket.propertyId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+      ).join('');
+    } else {
+      propField.style.display = 'none';
+    }
+  } else {
+    propField.style.display = 'none';
+  }
+
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('title').focus();
+}
+
+function closeModal(){
+  document.getElementById('overlay').classList.remove('open');
+  editingId = null;
+  currentSteps = [];
+  currentAttachments = [];
+  document.getElementById('fileInput').value = '';
+}
+
+/* ---------- Reminders: modal fields ---------- */
+function populateReminderFields(reminder){
+  const enabled = document.getElementById('reminderEnabled');
+  const fields = document.getElementById('reminderFields');
+  enabled.checked = !!reminder;
+  fields.classList.toggle('show', !!reminder);
+
+  const type = (reminder && reminder.type) || 'once';
+  document.querySelector(`input[name="reminderType"][value="${type}"]`).checked = true;
+  document.getElementById('reminderDate').value = (reminder && reminder.type === 'once') ? reminder.date : '';
+  document.getElementById('reminderTimeOnce').value = (reminder && reminder.type === 'once') ? reminder.time : '';
+  document.getElementById('reminderTimeDaily').value = (reminder && reminder.type === 'daily') ? reminder.time : '';
+  document.getElementById('reminderTimeWeekly').value = (reminder && reminder.type === 'weekly') ? reminder.time : '';
+  updateReminderFieldVisibility();
+}
+
+function updateReminderFieldVisibility(){
+  const type = document.querySelector('input[name="reminderType"]:checked').value;
+  document.getElementById('reminderOnceFields').style.display = type === 'once' ? 'grid' : 'none';
+  document.getElementById('reminderDailyFields').style.display = type === 'daily' ? 'block' : 'none';
+  document.getElementById('reminderWeeklyFields').style.display = type === 'weekly' ? 'block' : 'none';
+}
+
+document.getElementById('reminderEnabled').addEventListener('change', (e) => {
+  document.getElementById('reminderFields').classList.toggle('show', e.target.checked);
+});
+document.querySelectorAll('input[name="reminderType"]').forEach(r => {
+  r.addEventListener('change', updateReminderFieldVisibility);
+});
+
+function readReminderFromForm(){
+  if(!document.getElementById('reminderEnabled').checked) return null;
+  const type = document.querySelector('input[name="reminderType"]:checked').value;
+  if(type === 'once'){
+    const date = document.getElementById('reminderDate').value;
+    const time = document.getElementById('reminderTimeOnce').value;
+    if(!date || !time) return null;
+    return { type: 'once', date, time };
+  }
+  if(type === 'weekly'){
+    const time = document.getElementById('reminderTimeWeekly').value;
+    if(!time) return null;
+    return { type: 'weekly', time };
+  }
+  const time = document.getElementById('reminderTimeDaily').value;
+  if(!time) return null;
+  return { type: 'daily', time };
+}
+
+/* ---------- Steps ---------- */
+function renderStepsList(){
+  const list = document.getElementById('stepsList');
+  list.innerHTML = '';
+  currentSteps.forEach((step, idx) => {
+    const row = document.createElement('div');
+    row.className = 'step-row' + (step.done ? ' done' : '');
+    row.innerHTML = `
+      <input type="checkbox" ${step.done ? 'checked' : ''} aria-label="Mark step complete">
+      <input type="text" value="${escapeAttr(step.text)}" aria-label="Step description">
+      <button type="button" class="step-remove" aria-label="Remove step">×</button>
+    `;
+    row.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
+      currentSteps[idx].done = e.target.checked;
+      row.classList.toggle('done', e.target.checked);
+      updateStepsProgress();
+    });
+    row.querySelector('input[type="text"]').addEventListener('input', (e) => {
+      currentSteps[idx].text = e.target.value;
+    });
+    row.querySelector('.step-remove').addEventListener('click', () => {
+      currentSteps.splice(idx, 1);
+      renderStepsList();
+    });
+    list.appendChild(row);
+  });
+  updateStepsProgress();
+}
+
+function updateStepsProgress(){
+  const el = document.getElementById('stepsProgress');
+  if(currentSteps.length === 0){ el.textContent = ''; return; }
+  const done = currentSteps.filter(s => s.done).length;
+  el.textContent = `${done}/${currentSteps.length} done`;
+}
+
+document.getElementById('btnAddStep').addEventListener('click', () => {
+  const input = document.getElementById('newStepText');
+  const text = input.value.trim();
+  if(!text) return;
+  currentSteps.push({ id: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2,5), text, done:false });
+  input.value = '';
+  renderStepsList();
+  input.focus();
+});
+document.getElementById('newStepText').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('btnAddStep').click(); }
+});
+
+/* ---------- Attachments ---------- */
+function renderAttachGrid(){
+  const grid = document.getElementById('attachGrid');
+  grid.innerHTML = '';
+  currentAttachments.forEach((att, idx) => {
+    const thumb = document.createElement('div');
+    thumb.className = 'attach-thumb';
+    thumb.innerHTML = `
+      <img src="${att.dataUrl}" alt="${escapeAttr(att.name)}">
+      <button type="button" class="attach-remove" aria-label="Remove attachment">×</button>
+      <span class="attach-name">${escapeHtml(att.name)}</span>
+    `;
+    thumb.querySelector('img').addEventListener('click', () => {
+      const w = window.open();
+      if(w) w.document.write(`<img src="${att.dataUrl}" style="max-width:100%;">`);
+    });
+    thumb.querySelector('.attach-remove').addEventListener('click', () => {
+      currentAttachments.splice(idx, 1);
+      renderAttachGrid();
+    });
+    grid.appendChild(thumb);
+  });
+}
+
+document.getElementById('btnAttach').addEventListener('click', () => {
+  document.getElementById('fileInput').click();
+});
+
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  if(!files.length) return;
+  const btn = document.getElementById('btnAttach');
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Processing…';
+  btn.disabled = true;
+  let failCount = 0;
+  for(const file of files){
+    try{
+      const dataUrl = await resizeImage(file, 900, 0.72);
+      currentAttachments.push({
+        id: 'at_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
+        name: file.name,
+        dataUrl
+      });
+    }catch(err){
+      console.error('Could not process image', err);
+      failCount++;
+    }
+  }
+  renderAttachGrid();
+  e.target.value = '';
+  btn.textContent = originalLabel;
+  btn.disabled = false;
+  if(failCount) alert(`Couldn't attach ${failCount} photo(s). Try a different photo or a smaller file.`);
+});
+
+function resizeImage(file, maxDim, quality){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rawDataUrl = reader.result;
+      const img = new Image();
+      img.onload = () => {
+        try{
+          let { width, height } = img;
+          if(width > maxDim || height > maxDim){
+            const scale = maxDim / Math.max(width, height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        }catch(err){
+          // Resizing failed (e.g. an unusual photo format) — attach the
+          // original photo rather than losing it entirely.
+          console.error('Resize failed, using original photo', err);
+          resolve(rawDataUrl);
+        }
+      };
+      img.onerror = () => {
+        console.error('Could not decode image for resizing, using original photo');
+        resolve(rawDataUrl);
+      };
+      img.src = rawDataUrl;
+    };
+    reader.onerror = () => reject(new Error('Could not read the photo file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function escapeAttr(str){
+  return escapeHtml(str || '').replace(/"/g, '&quot;');
+}
+
+document.getElementById('btnNew').addEventListener('click', () => openModal(null));
+document.getElementById('btnCancel').addEventListener('click', closeModal);
+document.getElementById('overlay').addEventListener('click', (e) => {
+  if(e.target.id === 'overlay') closeModal();
+});
+
+document.getElementById('ticketForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const title = document.getElementById('title').value.trim();
+  if(!title) return;
+  const description = document.getElementById('description').value.trim();
+  const priority = document.getElementById('priority').value;
+  const dueDate = document.getElementById('dueDate').value;
+  const reminder = readReminderFromForm();
+
+  if(multiPropertyMode){
+    if(editingId){
+      const existing = tickets.find(t => t.id === editingId);
+      const baseStatus = existing ? existing.status : 'open';
+      const status = computeAutoStatus(currentSteps, baseStatus);
+      const propField = document.getElementById('ticketPropertyField');
+      const newPropertyId = (propField.style.display !== 'none')
+        ? document.getElementById('ticketProperty').value
+        : null;
+      const moved = newPropertyId && existing && newPropertyId !== existing.propertyId;
+      await dbUpdateTicket(editingId, { title, description, priority, dueDate, steps: currentSteps, attachments: currentAttachments, status, reminder, propertyId: moved ? newPropertyId : null });
+      closeModal();
+      await loadTickets();
+      if(moved){
+        const newName = properties.find(p => p.id === newPropertyId)?.name || 'the new building';
+        alert(`Moved to ${newName}.`);
+      }
+      return;
+    } else {
+      const status = computeAutoStatus(currentSteps, 'open');
+      await dbCreateTicket({ title, description, priority, dueDate, steps: currentSteps, attachments: currentAttachments, status, reminder });
+    }
+    closeModal();
+    await loadTickets();
+    return;
+  }
+
+  if(editingId){
+    const t = tickets.find(t => t.id === editingId);
+    if(t){
+      t.title = title;
+      t.description = description;
+      t.priority = priority;
+      t.dueDate = dueDate;
+      t.steps = currentSteps;
+      t.attachments = currentAttachments;
+      t.reminder = reminder;
+      applyAutoStatus(t);
+    }
+  } else {
+    const newTicket = {
+      id: 'tk_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      num: nextNum++,
+      title, description, priority, dueDate,
+      status: 'open',
+      createdAt: new Date().toISOString(),
+      steps: currentSteps,
+      attachments: currentAttachments,
+      reminder: reminder
+    };
+    applyAutoStatus(newTicket);
+    tickets.push(newTicket);
+  }
+  await saveTickets();
+  closeModal();
+  render();
+});
+
+document.getElementById('btnDelete').addEventListener('click', async () => {
+  if(!editingId) return;
+  if(multiPropertyMode){
+    await dbDeleteTicket(editingId);
+    closeModal();
+    await loadTickets();
+    return;
+  }
+  tickets = tickets.filter(t => t.id !== editingId);
+  await saveTickets();
+  closeModal();
+  render();
+});
+
+document.getElementById('search').addEventListener('input', render);
+document.getElementById('filterPriority').addEventListener('change', render);
+document.getElementById('sortBy').addEventListener('change', render);
+
+function computeAutoStatus(steps, currentStatus){
+  if(!steps.length) return currentStatus;
+  const allDone = steps.every(s => s.done);
+  const anyDone = steps.some(s => s.done);
+  if(allDone) return 'closed';
+  if(anyDone) return 'in_progress';
+  return 'open';
+}
+
+function applyAutoStatus(t){
+  t.status = computeAutoStatus(t.steps, t.status);
+}
+
+async function toggleCardStep(ticketId, stepId, done){
+  if(multiPropertyMode){
+    await dbToggleStep(ticketId, stepId, done);
+    await loadTickets();
+    return;
+  }
+  const t = tickets.find(t => t.id === ticketId);
+  if(!t) return;
+  const step = t.steps.find(s => s.id === stepId);
+  if(step) step.done = done;
+  applyAutoStatus(t);
+  await saveTickets();
+  render();
+}
+
+async function moveTicket(id, newStatus){
+  if(multiPropertyMode){
+    await dbSetStatus(id, newStatus);
+    await loadTickets();
+    return;
+  }
+  const t = tickets.find(t => t.id === id);
+  if(t){ t.status = newStatus; }
+  await saveTickets();
+  render();
+}
+
+function getFiltered(status){
+  const search = document.getElementById('search').value.trim().toLowerCase();
+  const priorityFilter = document.getElementById('filterPriority').value;
+  const sortBy = document.getElementById('sortBy').value;
+
+  let list = tickets.filter(t => t.status === status);
+  if(search){
+    list = list.filter(t =>
+      t.title.toLowerCase().includes(search) ||
+      (t.description || '').toLowerCase().includes(search) ||
+      ticketNumber(t.num).toLowerCase().includes(search)
+    );
+  }
+  if(priorityFilter !== 'all'){
+    list = list.filter(t => t.priority === priorityFilter);
+  }
+  list.sort((a,b) => {
+    if(sortBy === 'priority') return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+    if(sortBy === 'newest') return new Date(b.createdAt) - new Date(a.createdAt);
+    if(sortBy === 'oldest') return new Date(a.createdAt) - new Date(b.createdAt);
+    if(sortBy === 'due'){
+      if(!a.dueDate && !b.dueDate) return 0;
+      if(!a.dueDate) return 1;
+      if(!b.dueDate) return -1;
+      return new Date(a.dueDate) - new Date(b.dueDate);
+    }
+    return 0;
+  });
+  return list;
+}
+
+function ticketCard(t){
+  const div = document.createElement('div');
+  const isEmployee = multiPropertyMode && currentRole() === 'employee';
+  div.className = 'ticket';
+  div.draggable = !isEmployee;
+  div.dataset.id = t.id;
+  if(isEmployee) div.style.cursor = 'default';
+
+  const statusOptions = STATUSES.map(s =>
+    `<option value="${s.key}" ${s.key===t.status?'selected':''}>${s.label}</option>`
+  ).join('');
+
+  div.innerHTML = `
+    <div class="stamp ${t.priority}">${t.priority}</div>
+    <div class="perf">
+      <span class="tnum">${ticketNumber(t.num)}</span>
+      <span class="hole"></span>
+    </div>
+    <h3>${escapeHtml(t.title)}</h3>
+    ${t.description ? `<p class="desc">${escapeHtml(t.description)}</p>` : ''}
+    <div class="meta">
+      <span>Opened ${fmtDate(t.createdAt)}</span>
+      <span>${t.dueDate ? 'Due ' + fmtDate(t.dueDate) : ''}</span>
+    </div>
+    ${(t.steps.length || t.attachments.length) ? `<div class="card-badges">
+      ${t.steps.length ? `<span class="badge ${t.steps.filter(s=>s.done).length===t.steps.length ? 'progress-complete' : ''}">${t.steps.filter(s=>s.done).length}/${t.steps.length} steps</span>` : ''}
+      ${t.attachments.length ? `<span class="badge">📎 ${t.attachments.length}</span>` : ''}
+    </div>` : ''}
+    ${t.steps.length ? `
+    <details class="card-steps" ${expandedStepsIds.has(t.id) ? 'open' : ''}>
+      <summary>View steps</summary>
+      <div class="card-steps-list">
+        ${t.steps.map(s => `
+          <label class="card-step-item ${s.done ? 'done' : ''}" data-step-id="${s.id}">
+            <input type="checkbox" ${s.done ? 'checked' : ''}>
+            <span>${escapeHtml(s.text)}</span>
+          </label>
+        `).join('')}
+      </div>
+    </details>` : ''}
+    ${multiPropertyMode ? `
+    <details class="card-photos" ${expandedAttachIds.has(t.id) ? 'open' : ''}>
+      <summary>Photos (${t.attachments.length})</summary>
+      <div class="card-steps-list">
+        <div class="attach-grid" style="margin-bottom:8px;">
+          ${t.attachments.map(a => `
+            <div class="attach-thumb">
+              <img src="${a.dataUrl}" alt="${escapeAttr(a.name)}">
+              <button type="button" class="attach-remove" data-attach-id="${a.id}" aria-label="Remove photo">×</button>
+            </div>
+          `).join('')}
+        </div>
+        <button type="button" class="btn-attach card-add-photo">+ Add photo</button>
+        <input type="file" class="card-photo-input" accept="image/*" multiple style="display:none;">
+      </div>
+    </details>` : ''}
+    ${isEmployee ? '' : `
+    <div class="actions">
+      <select aria-label="Change status">${statusOptions}</select>
+      <button type="button" class="icon-btn" title="Edit ticket">✎</button>
+    </div>
+    `}
+  `;
+
+  if(!isEmployee){
+    div.querySelector('select').addEventListener('change', (e) => {
+      moveTicket(t.id, e.target.value);
+    });
+    div.querySelector('.icon-btn').addEventListener('click', () => openModal(t));
+  }
+
+  div.querySelectorAll('.card-step-item').forEach(label => {
+    const checkbox = label.querySelector('input[type="checkbox"]');
+    checkbox.addEventListener('mousedown', (e) => e.stopPropagation());
+    checkbox.addEventListener('change', async (e) => {
+      await toggleCardStep(t.id, label.dataset.stepId, e.target.checked);
+    });
+  });
+
+  const detailsEl = div.querySelector('.card-steps');
+  if(detailsEl){
+    detailsEl.addEventListener('mousedown', (e) => {
+      if(e.target.tagName === 'SUMMARY' || e.target.closest('summary')) e.stopPropagation();
+    });
+    detailsEl.addEventListener('toggle', () => {
+      if(detailsEl.open) expandedStepsIds.add(t.id);
+      else expandedStepsIds.delete(t.id);
+    });
+  }
+
+  const photoDetails = div.querySelector('.card-photos');
+  if(photoDetails){
+    photoDetails.addEventListener('mousedown', (e) => {
+      if(e.target.tagName === 'SUMMARY' || e.target.closest('summary')) e.stopPropagation();
+    });
+    photoDetails.addEventListener('toggle', () => {
+      if(photoDetails.open) expandedAttachIds.add(t.id);
+      else expandedAttachIds.delete(t.id);
+    });
+
+    photoDetails.querySelectorAll('.attach-thumb img').forEach(img => {
+      img.addEventListener('mousedown', (e) => e.stopPropagation());
+      img.addEventListener('click', () => {
+        const w = window.open();
+        if(w) w.document.write(`<img src="${img.src}" style="max-width:100%;">`);
+      });
+    });
+
+    photoDetails.querySelectorAll('.attach-remove').forEach(btn => {
+      btn.addEventListener('mousedown', (e) => e.stopPropagation());
+      btn.addEventListener('click', async () => {
+        await dbRemoveAttachment(t.id, btn.dataset.attachId);
+        await loadTickets();
+      });
+    });
+
+    const addBtn = photoDetails.querySelector('.card-add-photo');
+    const fileInput = photoDetails.querySelector('.card-photo-input');
+    addBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    addBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('mousedown', (e) => e.stopPropagation());
+    fileInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      if(!files.length) return;
+      const originalLabel = addBtn.textContent;
+      addBtn.textContent = 'Uploading…';
+      addBtn.disabled = true;
+      let failCount = 0;
+      for(const file of files){
+        try{
+          const dataUrl = await resizeImage(file, 900, 0.72);
+          const ok = await dbAddAttachment(t.id, {
+            id: 'at_' + Date.now() + '_' + Math.random().toString(36).slice(2,5),
+            name: file.name,
+            dataUrl
+          });
+          if(!ok) failCount++;
+        }catch(err){
+          console.error('Could not process image', err);
+          failCount++;
+        }
+      }
+      e.target.value = '';
+      await loadTickets();
+      if(failCount) alert(`Couldn't attach ${failCount} photo(s). Try again, or use a different photo.`);
+    });
+  }
+
+  div.addEventListener('dragstart', () => {
+    if(isEmployee) return;
+    dragId = t.id;
+    div.classList.add('dragging');
+  });
+  div.addEventListener('dragend', () => {
+    div.classList.remove('dragging');
+    dragId = null;
+  });
+
+  return div;
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function render(){
+  board.innerHTML = '';
+  let total = 0;
+  STATUSES.forEach(s => {
+    const col = document.createElement('div');
+    col.className = 'column';
+    col.style.setProperty('--col-color', s.color);
+    col.dataset.status = s.key;
+
+    const items = getFiltered(s.key);
+    total += tickets.filter(t => t.status === s.key).length;
+
+    const head = document.createElement('div');
+    head.className = 'col-head';
+    head.innerHTML = `<h2>${s.label}</h2><span class="col-count">${items.length}</span>`;
+    col.appendChild(head);
+
+    if(items.length === 0){
+      const empty = document.createElement('div');
+      empty.className = 'col-empty';
+      empty.textContent = s.key === 'open' ? 'No open tickets. Nice.' : 'Nothing here yet.';
+      col.appendChild(empty);
+    } else {
+      items.forEach(t => col.appendChild(ticketCard(t)));
+    }
+
+    col.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      col.classList.add('dragover');
+    });
+    col.addEventListener('dragleave', () => col.classList.remove('dragover'));
+    col.addEventListener('drop', (e) => {
+      e.preventDefault();
+      col.classList.remove('dragover');
+      if(dragId) moveTicket(dragId, s.key);
+    });
+
+    board.appendChild(col);
+  });
+
+  subtitle.textContent = storageFailed
+    ? 'COULD NOT SAVE — CHANGES MAY BE LOST ON REFRESH'
+    : (tickets.length
+        ? `${tickets.length} TICKET${tickets.length===1?'':'S'} ON THE BOARD`
+        : 'BOARD IS CLEAR — ADD YOUR FIRST TICKET');
+
+  document.getElementById('btnNew').style.display =
+    (multiPropertyMode && currentRole() === 'employee') ? 'none' : 'inline-block';
+
+  checkReminders();
+}
+
+/* ---------- Reminders ---------- */
+let notifiedKeys = new Set();
+
+function weekKeyFor(date){
+  const d = new Date(date);
+  const sunday = new Date(d);
+  sunday.setDate(d.getDate() - d.getDay());
+  return sunday.toDateString();
+}
+
+function isReminderDueNow(ticket){
+  const reminder = ticket.reminder;
+  if(!reminder) return false;
+  const now = new Date();
+
+  if(reminder.type === 'once'){
+    if(!reminder.date || !reminder.time) return false;
+    const target = new Date(`${reminder.date}T${reminder.time}`);
+    return now >= target;
+  }
+
+  if(reminder.type === 'weekly'){
+    if(!reminder.time) return false;
+    if(ticket.dueDate){
+      const dueEnd = new Date(`${ticket.dueDate}T23:59:59`);
+      if(now > dueEnd) return false; // stop nagging once the due date has passed
+    }
+    const createdWeekday = new Date(ticket.createdAt).getDay();
+    if(now.getDay() !== createdWeekday) return false;
+    if(reminder.dismissedDate === weekKeyFor(now)) return false;
+    const [h, m] = reminder.time.split(':').map(Number);
+    const target = new Date();
+    target.setHours(h, m, 0, 0);
+    return now >= target;
+  }
+
+  if(!reminder.time) return false;
+  if(reminder.dismissedDate === now.toDateString()) return false;
+  const [h, m] = reminder.time.split(':').map(Number);
+  const target = new Date();
+  target.setHours(h, m, 0, 0);
+  return now >= target;
+}
+
+function fmtTime(hhmm){
+  if(!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
+}
+
+function checkReminders(){
+  const due = tickets.filter(t => t.reminder && isReminderDueNow(t));
+  renderRemindersBanner(due);
+
+  due.forEach(t => {
+    const periodKey = t.reminder.type === 'once' ? (t.reminder.date + t.reminder.time)
+      : t.reminder.type === 'weekly' ? weekKeyFor(new Date())
+      : new Date().toDateString();
+    const key = t.id + '_' + periodKey;
+    if(!notifiedKeys.has(key)){
+      notifiedKeys.add(key);
+      if(window.Notification && Notification.permission === 'granted'){
+        try{ new Notification('Reminder: ' + t.title, { body: ticketNumber(t.num) }); }
+        catch(e){ /* ignore */ }
+      }
+    }
+  });
+}
+
+function renderRemindersBanner(due){
+  const banner = document.getElementById('remindersBanner');
+  const list = document.getElementById('remindersList');
+  if(!due.length){
+    banner.classList.remove('show');
+    list.innerHTML = '';
+    return;
+  }
+  banner.classList.add('show');
+  list.innerHTML = due.map(t => {
+    let label;
+    if(t.reminder.type === 'daily') label = 'Daily at ' + fmtTime(t.reminder.time);
+    else if(t.reminder.type === 'weekly') label = 'Weekly at ' + fmtTime(t.reminder.time) + (t.dueDate ? ' · until ' + fmtDate(t.dueDate) : '');
+    else label = 'Due ' + fmtDate(t.reminder.date) + ' ' + fmtTime(t.reminder.time);
+    return `
+    <div class="reminder-item">
+      <div class="r-info">
+        <span>${escapeHtml(t.title)}</span>
+        <span class="r-time">${label}</span>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button type="button" class="rem-open" data-ticket-id="${t.id}">Open</button>
+        <button type="button" class="rem-dismiss" data-ticket-id="${t.id}">Dismiss</button>
+      </div>
+    </div>
+  `;
+  }).join('');
+
+  list.querySelectorAll('.rem-open').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const t = tickets.find(x => x.id === btn.dataset.ticketId);
+      if(t) openModal(t);
+    });
+  });
+  list.querySelectorAll('.rem-dismiss').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const t = tickets.find(x => x.id === btn.dataset.ticketId);
+      if(!t || !t.reminder) return;
+      if(t.reminder.type === 'once'){
+        await clearReminder(t.id);
+      } else {
+        await snoozeReminder(t.id);
+      }
+    });
+  });
+}
+
+async function clearReminder(ticketId){
+  if(multiPropertyMode){
+    await dbClearReminder(ticketId);
+    await loadTickets();
+    return;
+  }
+  const t = tickets.find(x => x.id === ticketId);
+  if(t) t.reminder = null;
+  await saveTickets();
+  render();
+}
+
+async function snoozeReminder(ticketId){
+  const t = tickets.find(x => x.id === ticketId);
+  if(!t || !t.reminder) return;
+  const key = t.reminder.type === 'weekly' ? weekKeyFor(new Date()) : new Date().toDateString();
+  if(multiPropertyMode){
+    await dbSnoozeReminder(ticketId, key);
+    await loadTickets();
+    return;
+  }
+  t.reminder.dismissedDate = key;
+  await saveTickets();
+  render();
+}
+
+if('Notification' in window){
+  document.getElementById('btnEnableNotifs').addEventListener('click', async () => {
+    const perm = await Notification.requestPermission();
+    if(perm !== 'default'){
+      document.getElementById('btnEnableNotifs').style.display = 'none';
+    }
+  });
+}
+
+setInterval(async () => {
+  if(multiPropertyMode){
+    await loadTickets(); // pulls in changes from other devices too
+  } else {
+    checkReminders();
+  }
+}, 30000);
+
+/* ---------- Auth (standalone + Supabase mode only) ---------- */
+let authMode = 'signin';
+
+function showApp(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('setupScreen').classList.remove('open');
+  document.getElementById('appRoot').style.display = '';
+  document.getElementById('btnSignOut').style.display = supabaseConfigured ? 'inline-block' : 'none';
+  document.getElementById('btnEnableNotifs').style.display =
+    ('Notification' in window && Notification.permission === 'default') ? 'inline-block' : 'none';
+}
+function showLogin(){
+  document.getElementById('appRoot').style.display = 'none';
+  document.getElementById('setupScreen').classList.remove('open');
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+function showLoginMsg(text, type){
+  const el = document.getElementById('loginMsg');
+  el.textContent = text;
+  el.className = 'login-msg ' + type;
+}
+function hideLoginMsg(){
+  const el = document.getElementById('loginMsg');
+  el.className = 'login-msg';
+  el.textContent = '';
+}
+function setAuthMode(mode){
+  authMode = mode;
+  document.getElementById('tabSignIn').classList.toggle('active', mode==='signin');
+  document.getElementById('tabSignUp').classList.toggle('active', mode==='signup');
+  document.getElementById('authSubmit').textContent = mode==='signin' ? 'Sign in' : 'Create account';
+  document.getElementById('authPassword').autocomplete = mode==='signin' ? 'current-password' : 'new-password';
+  hideLoginMsg();
+}
+
+if(supabaseConfigured){
+  document.getElementById('tabSignIn').addEventListener('click', () => setAuthMode('signin'));
+  document.getElementById('tabSignUp').addEventListener('click', () => setAuthMode('signup'));
+
+  document.getElementById('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideLoginMsg();
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const btn = document.getElementById('authSubmit');
+    btn.disabled = true;
+    try{
+      if(authMode === 'signin'){
+        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if(error) throw error;
+      } else {
+        const { data, error } = await supabaseClient.auth.signUp({ email, password });
+        if(error) throw error;
+        if(!data.session){
+          showLoginMsg('Account created — check your email to confirm, then sign in.', 'info');
+          setAuthMode('signin');
+        }
+      }
+    }catch(err){
+      showLoginMsg(err.message || 'Something went wrong. Try again.', 'error');
+    }finally{
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btnSignOut').addEventListener('click', async () => {
+    await supabaseClient.auth.signOut();
+  });
+
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if(session){
+      currentUserId = session.user.id;
+      currentUserEmail = session.user.email;
+      handleSignedIn();
+    } else {
+      currentUserId = null;
+      currentUserEmail = null;
+      showLogin();
+    }
+  });
+}
+
+async function handleSignedIn(){
+  if(multiPropertyMode){
+    const ok = await loadProperties();
+    if(!ok) return; // showSetupScreen() already called
+    showApp();
+    await loadTickets();
+  } else {
+    showApp();
+    await loadTickets();
+  }
+}
+
+async function init(){
+  if(hasCloudStorage || !supabaseConfigured){
+    // Running inside Claude, or no backend wired up yet — no login needed.
+    showApp();
+    document.getElementById('btnSignOut').style.display = 'none';
+    document.getElementById('btnImportEmail').style.display = 'inline-block';
+    await loadTickets();
+    return;
+  }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if(session){
+    currentUserId = session.user.id;
+    currentUserEmail = session.user.email;
+    await handleSignedIn();
+  } else {
+    showLogin();
+  }
+}
+
+/* ---------- Import Jack Jaffa violation email ---------- */
+function openImportModal(){
+  const propField = document.getElementById('importPropertyField');
+  if(multiPropertyMode){
+    propField.style.display = '';
+    const sel = document.getElementById('importProperty');
+    const owned = properties.filter(p => p.role === 'owner');
+    sel.innerHTML = owned.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  } else {
+    propField.style.display = 'none';
+  }
+  document.getElementById('importText').value = '';
+  document.getElementById('importMsg').className = 'login-msg';
+  document.getElementById('importMsg').textContent = '';
+  document.getElementById('importOverlay').classList.add('open');
+}
+
+document.getElementById('btnImportEmail').addEventListener('click', openImportModal);
+document.getElementById('btnCloseImport').addEventListener('click', () => {
+  document.getElementById('importOverlay').classList.remove('open');
+});
+document.getElementById('importOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'importOverlay') document.getElementById('importOverlay').classList.remove('open');
+});
+
+function parseJackJaffaEmail(text){
+  if(/-{8,}/.test(text)) return parseJJDashedFormat(text);
+  return parseJJLineFormat(text);
+}
+
+// Raw email format: blocks separated by dashed lines, fields as
+// "Label:    value" in any order within the block.
+function parseJJDashedFormat(text){
+  const blocks = text.split(/-{8,}/).map(b => b.trim()).filter(Boolean);
+  const violations = [];
+  const field = (block, label) => {
+    const re = new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:[ \\t]*([^\\r\\n]*)', 'i');
+    const m = block.match(re);
+    return m ? m[1].trim() : '';
+  };
+  for(const block of blocks){
+    if(!/Violation\s*#/i.test(block)) continue;
+    violations.push({
+      novDate: field(block, 'NOV Issued Date'),
+      apartment: field(block, 'Apartment'),
+      cls: field(block, 'Class').toUpperCase(),
+      violationNum: field(block, 'Violation #'),
+      correctByDate: field(block, 'Correct By Date'),
+      description: field(block, 'Description')
+    });
+  }
+  return violations;
+}
+
+// Portal copy/paste format: "Label" then its value on the next line,
+// no colons, "Violation #" always starts a new record.
+const JJ_LABELS = ['Violation #', 'NOV Issued Date', 'Certification Date', 'Apartment', 'Correct By Date', 'Class', 'Order #', 'Description'];
+
+function jjIsLabelLine(line){
+  const t = line.trim().toLowerCase();
+  return JJ_LABELS.some(l => t === l.toLowerCase());
+}
+
+function parseJJLineFormat(text){
+  const rawLines = text.split(/\r?\n/).map(l => l.trim());
+  const violations = [];
+  let current = null;
+  let i = 0;
+  while(i < rawLines.length){
+    const line = rawLines[i];
+    if(!line || /^click here/i.test(line)){ i++; continue; }
+
+    const label = JJ_LABELS.find(l => l.toLowerCase() === line.toLowerCase());
+    if(label){
+      if(label === 'Violation #'){
+        if(current && current.violationNum) violations.push(current);
+        current = { novDate:'', apartment:'', cls:'', violationNum:'', correctByDate:'', description:'' };
+      }
+      if(current){
+        let j = i + 1;
+        while(j < rawLines.length && (!rawLines[j] || /^click here/i.test(rawLines[j]))) j++;
+        const value = (j < rawLines.length && !jjIsLabelLine(rawLines[j])) ? rawLines[j] : '';
+        if(value) i = j;
+
+        switch(label){
+          case 'Violation #': current.violationNum = value; break;
+          case 'NOV Issued Date': current.novDate = value; break;
+          case 'Apartment': current.apartment = value; break;
+          case 'Correct By Date': current.correctByDate = value; break;
+          case 'Class': current.cls = value.toUpperCase(); break;
+          case 'Description': current.description = value; break;
+        }
+      }
+    }
+    i++;
+  }
+  if(current && current.violationNum) violations.push(current);
+  return violations;
+}
+
+function jjToISODate(mdY){
+  const m = mdY.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(!m) return '';
+  const [, mo, da, yr] = m;
+  return `${yr}-${mo.padStart(2,'0')}-${da.padStart(2,'0')}`;
+}
+
+function classToPriority(classes){
+  if(classes.includes('C')) return 'urgent';
+  if(classes.includes('B')) return 'high';
+  if(classes.includes('A')) return 'medium';
+  return 'medium';
+}
+
+const JJ_ACTION_WORDS = /\b(properly|repair|replace|remove|abate|provide|install|correct|eliminate|restore|secure|exterminate|maintain|paint|cease|discontinue)\b/i;
+
+function simplifyJJDescription(desc, apt){
+  let d = (desc || '').trim();
+  if(!d) return d;
+
+  // Cut everything before the first real instruction verb — drops the
+  // legal/code citations HPD always prepends.
+  const idx = d.search(JJ_ACTION_WORDS);
+  if(idx > 0) d = d.slice(idx);
+
+  // Drop the repetitive trailing location boilerplate.
+  d = d.replace(/\s*located at apt[^,]*(,[^,]*)*$/i, '');
+  d = d.replace(/\s*at (public hall|the yard)[^,]*(,[^,]*)*$/i, '');
+  d = d.replace(/\s*,?\s*section\s*"?[\w\s]*"?\s*$/i, '');
+  d = d.replace(/\s+(at|in|on)\s*$/i, '');
+
+  d = d.replace(/\bconsisting of\b/gi, 'of');
+  d = d.replace(/\bthe entire apartment\b/gi, apt ? `the entire apt ${apt}` : 'the entire apartment');
+
+  d = d.trim().replace(/[,;\s]+$/, '');
+  if(d) d = d.charAt(0).toUpperCase() + d.slice(1);
+  return d;
+}
+
+document.getElementById('btnDoImport').addEventListener('click', async () => {
+  const msgEl = document.getElementById('importMsg');
+  msgEl.className = 'login-msg';
+  msgEl.textContent = '';
+
+  const text = document.getElementById('importText').value;
+  const propertyId = multiPropertyMode ? document.getElementById('importProperty').value : null;
+
+  if(multiPropertyMode && !propertyId){
+    msgEl.className = 'login-msg error';
+    msgEl.textContent = 'Pick which building this notice is for.';
+    return;
+  }
+  if(!text.trim()){
+    msgEl.className = 'login-msg error';
+    msgEl.textContent = 'Paste the email text first.';
+    return;
+  }
+
+  const violations = parseJackJaffaEmail(text);
+  if(!violations.length){
+    msgEl.className = 'login-msg error';
+    msgEl.textContent = "Couldn't find any violations in that text — make sure the full email/portal text was pasted.";
+    return;
+  }
+
+  // Group violations by apartment; blank/N/A goes into its own Common Area ticket.
+  const groups = new Map();
+  for(const v of violations){
+    const rawApt = (v.apartment || '').trim();
+    const isCommon = !rawApt || /^n\/?a$/i.test(rawApt);
+    const key = isCommon ? '__COMMON__' : rawApt.toUpperCase();
+    if(!groups.has(key)) groups.set(key, { apt: isCommon ? null : rawApt.toUpperCase(), items: [] });
+    groups.get(key).items.push(v);
+  }
+
+  const propertyName = multiPropertyMode
+    ? (properties.find(p => p.id === propertyId)?.name || 'Property')
+    : 'This property';
+
+  const createdTitles = [];
+
+  for(const { apt, items } of groups.values()){
+    const isoDates = items.map(v => jjToISODate(v.correctByDate)).filter(Boolean).sort();
+    const dueDate = isoDates.length ? isoDates[0] : '';
+    const priority = classToPriority(items.map(v => v.cls));
+    const title = apt ? `Apartment ${apt} HPD Violations` : 'Common Area HPD Violations';
+
+    const steps = items.map(v => ({
+      id: 'st_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+      text: simplifyJJDescription(v.description, apt),
+      done: false
+    }));
+
+    const fields = {
+      title,
+      description: `${items.length} HPD violation${items.length===1?'':'s'} at ${propertyName}, imported from a Jack Jaffa notice.`,
+      priority,
+      dueDate,
+      steps,
+      attachments: [],
+      status: 'open',
+      reminder: { type: 'weekly', time: '09:00' }
+    };
+
+    if(multiPropertyMode){
+      await dbCreateTicket(fields, propertyId);
+    } else {
+      tickets.push({
+        id: 'tk_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+        num: nextNum++,
+        createdAt: new Date().toISOString(),
+        ...fields
+      });
+    }
+    createdTitles.push(`${title} (${items.length} step${items.length===1?'':'s'})`);
+  }
+
+  if(multiPropertyMode){
+    if(propertyId === selectedPropertyId) await loadTickets();
+  } else {
+    await saveTickets();
+    render();
+  }
+
+  document.getElementById('importOverlay').classList.remove('open');
+  alert(`Created ${createdTitles.length} work order(s):\n\n${createdTitles.join('\n')}`);
+});
+
+init();
+</script>
+</body>
+</html>
