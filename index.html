@@ -847,43 +847,54 @@
       <select id="propertySelect" style="display:none;"></select>
       <button class="signout-btn" id="btnImportEmail" style="display:none;">📋 Import Violation Email</button>
       <button class="signout-btn" id="btnEnableNotifs" style="display:none;">🔔 Enable notifications</button>
+      <button class="signout-btn" id="btnCourtCases" style="display:none;">⚖️ Court Cases</button>
       <button class="signout-btn" id="btnAdmin" style="display:none;">Manage properties</button>
       <button class="signout-btn" id="btnSignOut" style="display:none;">Sign out</button>
       <button class="btn-new" id="btnNew">+ New Ticket</button>
     </div>
   </div>
 
-  <div class="controls">
-    <div class="ctrl-group">
-      <input type="text" id="search" placeholder="Search tickets…">
+  <div id="boardView">
+    <div class="controls">
+      <div class="ctrl-group">
+        <input type="text" id="search" placeholder="Search tickets…">
+      </div>
+      <div class="ctrl-group">
+        <label for="filterPriority">Priority</label>
+        <select id="filterPriority">
+          <option value="all">All</option>
+          <option value="urgent">Urgent</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <div class="ctrl-group">
+        <label for="sortBy">Sort</label>
+        <select id="sortBy">
+          <option value="priority">Priority</option>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="due">Due date</option>
+        </select>
+      </div>
     </div>
-    <div class="ctrl-group">
-      <label for="filterPriority">Priority</label>
-      <select id="filterPriority">
-        <option value="all">All</option>
-        <option value="urgent">Urgent</option>
-        <option value="high">High</option>
-        <option value="medium">Medium</option>
-        <option value="low">Low</option>
-      </select>
+
+    <div class="reminders-banner" id="remindersBanner">
+      <p class="reminders-banner-title">🔔 Due reminders</p>
+      <div id="remindersList"></div>
     </div>
-    <div class="ctrl-group">
-      <label for="sortBy">Sort</label>
-      <select id="sortBy">
-        <option value="priority">Priority</option>
-        <option value="newest">Newest first</option>
-        <option value="oldest">Oldest first</option>
-        <option value="due">Due date</option>
-      </select>
-    </div>
+
+    <div class="board" id="board"></div>
   </div>
 
-  <div class="reminders-banner" id="remindersBanner">
-    <p class="reminders-banner-title">🔔 Due reminders</p>
-    <div id="remindersList"></div>
+  <div id="courtView" style="display:none;">
+    <div class="controls" style="justify-content:space-between;">
+      <p style="margin:0; font-family:'Fraunces',serif; font-weight:600; font-size:20px;">Court Cases</p>
+      <button class="btn-new" id="btnNewCase">+ New Case</button>
+    </div>
+    <div id="courtCasesList"></div>
   </div>
-
-  <div class="board" id="board"></div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -1025,6 +1036,100 @@
     <div class="modal-actions">
       <button type="button" class="btn-secondary" id="btnCloseImport">Cancel</button>
       <button type="button" class="btn-primary" id="btnDoImport">Create Work Order</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="newCaseOverlay">
+  <div class="modal">
+    <h2>New Court Case</h2>
+    <div class="login-msg" id="newCaseMsg"></div>
+    <div class="field">
+      <label for="caseTenantName">Tenant name</label>
+      <input type="text" id="caseTenantName">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="caseApartment">Apartment</label>
+        <input type="text" id="caseApartment">
+      </div>
+      <div class="field">
+        <label for="caseNumber">Case number (optional)</label>
+        <input type="text" id="caseNumber">
+      </div>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label for="caseOriginalAmount">Original amount sued for</label>
+        <input type="number" step="0.01" id="caseOriginalAmount">
+      </div>
+      <div class="field">
+        <label for="caseOriginalDate">Original petition date</label>
+        <input type="date" id="caseOriginalDate">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="btnCloseNewCase">Cancel</button>
+      <button type="button" class="btn-primary" id="btnCreateCase">Create Case</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="caseDetailOverlay">
+  <div class="modal" style="max-width:640px;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+      <h2 id="caseDetailTitle" style="margin-bottom:0;">Tenant</h2>
+      <button type="button" class="btn-danger" id="btnDeleteCase" style="margin:0;">Delete case</button>
+    </div>
+    <p style="margin:0 0 20px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ink-soft);" id="caseDetailSub"></p>
+
+    <div class="admin-property" style="margin-top:0;">
+      <h3>Summary</h3>
+      <div id="caseSummary"></div>
+      <div class="field" style="margin:14px 0 0;">
+        <label for="caseStatusSelect">Status</label>
+        <select id="caseStatusSelect">
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="admin-property">
+      <h3>Petition history</h3>
+      <div id="petitionList"></div>
+      <div class="admin-invite-row">
+        <input type="date" id="newPetitionDate" style="flex:0 0 150px;">
+        <input type="number" step="0.01" placeholder="Amount" id="newPetitionAmount" style="flex:0 0 120px;">
+        <input type="text" placeholder="Note (optional)" id="newPetitionNote">
+        <button type="button" class="btn-attach" id="btnAddPetition">+ Amend</button>
+      </div>
+    </div>
+
+    <div class="admin-property">
+      <h3>Payments</h3>
+      <div id="paymentList"></div>
+      <div class="admin-invite-row">
+        <input type="date" id="newPaymentDate" style="flex:0 0 150px;">
+        <input type="number" step="0.01" placeholder="Amount" id="newPaymentAmount" style="flex:0 0 120px;">
+        <input type="text" placeholder="Note (optional)" id="newPaymentNote">
+        <button type="button" class="btn-attach" id="btnAddPayment">+ Add</button>
+      </div>
+    </div>
+
+    <div class="admin-property">
+      <h3>Legal costs</h3>
+      <div id="costList"></div>
+      <div class="admin-invite-row">
+        <input type="date" id="newCostDate" style="flex:0 0 150px;">
+        <input type="number" step="0.01" placeholder="Amount" id="newCostAmount" style="flex:0 0 120px;">
+        <input type="text" placeholder="Description" id="newCostDesc">
+        <button type="button" class="btn-attach" id="btnAddCost">+ Add</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="btnCloseCaseDetail">Close</button>
     </div>
   </div>
 </div>
@@ -1304,6 +1409,7 @@ async function loadProperties(){
   renderPropertySelector();
   document.getElementById('btnAdmin').style.display = properties.some(p => p.role === 'owner') ? 'inline-block' : 'none';
   document.getElementById('btnImportEmail').style.display = properties.some(p => p.role === 'owner') ? 'inline-block' : 'none';
+  document.getElementById('btnCourtCases').style.display = properties.some(p => p.role === 'owner') ? 'inline-block' : 'none';
   return true;
 }
 
@@ -1323,6 +1429,9 @@ function showSetupScreen(){
 document.getElementById('propertySelect').addEventListener('change', async (e) => {
   selectedPropertyId = e.target.value;
   await loadTickets();
+  if(document.getElementById('courtView').style.display !== 'none'){
+    await loadCourtCases();
+  }
 });
 
 document.getElementById('btnSetupCreate').addEventListener('click', async () => {
@@ -2605,6 +2714,293 @@ document.getElementById('btnDoImport').addEventListener('click', async () => {
 
   document.getElementById('importOverlay').classList.remove('open');
   alert(`Created ${createdTitles.length} work order(s):\n\n${createdTitles.join('\n')}`);
+});
+
+/* ---------- Court Cases (owner-only) ---------- */
+let courtCases = [];
+let currentCaseId = null;
+
+function fmtMoney(n){
+  const num = Number(n) || 0;
+  return '$' + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function latestPetition(kase){
+  return kase.petitions.length ? kase.petitions[kase.petitions.length - 1] : null;
+}
+function paymentsSinceLastPetition(kase){
+  const lp = latestPetition(kase);
+  if(!lp) return 0;
+  return kase.payments
+    .filter(p => p.payment_date > lp.petition_date)
+    .reduce((s, p) => s + Number(p.amount), 0);
+}
+function totalCosts(kase){
+  return kase.costs.reduce((s, c) => s + Number(c.amount), 0);
+}
+function currentBalance(kase){
+  const lp = latestPetition(kase);
+  if(!lp) return 0;
+  return Number(lp.amount) - paymentsSinceLastPetition(kase);
+}
+
+function showBoardView(){
+  document.getElementById('boardView').style.display = '';
+  document.getElementById('courtView').style.display = 'none';
+  document.getElementById('btnCourtCases').textContent = '⚖️ Court Cases';
+}
+function showCourtView(){
+  document.getElementById('boardView').style.display = 'none';
+  document.getElementById('courtView').style.display = '';
+  document.getElementById('btnCourtCases').textContent = '📋 Work Orders';
+}
+
+document.getElementById('btnCourtCases').addEventListener('click', async () => {
+  const inCourtView = document.getElementById('courtView').style.display !== 'none';
+  if(inCourtView){
+    showBoardView();
+  } else {
+    showCourtView();
+    await loadCourtCases();
+  }
+});
+
+async function loadCourtCases(){
+  const { data: cases, error } = await supabaseClient
+    .from('court_cases')
+    .select('*')
+    .eq('property_id', selectedPropertyId)
+    .order('created_at', { ascending: false });
+  if(error){ console.error('Load court cases failed', error); return; }
+
+  const caseIds = cases.map(c => c.id);
+  let petitions = [], payments = [], costs = [];
+  if(caseIds.length){
+    const [p, pay, c] = await Promise.all([
+      supabaseClient.from('court_case_petitions').select('*').in('case_id', caseIds).order('petition_date', { ascending: true }),
+      supabaseClient.from('court_case_payments').select('*').in('case_id', caseIds).order('payment_date', { ascending: true }),
+      supabaseClient.from('court_case_costs').select('*').in('case_id', caseIds).order('cost_date', { ascending: true })
+    ]);
+    petitions = p.data || [];
+    payments = pay.data || [];
+    costs = c.data || [];
+  }
+
+  courtCases = cases.map(c => ({
+    ...c,
+    petitions: petitions.filter(x => x.case_id === c.id),
+    payments: payments.filter(x => x.case_id === c.id),
+    costs: costs.filter(x => x.case_id === c.id)
+  }));
+
+  renderCourtCasesList();
+}
+
+function renderCourtCasesList(){
+  const container = document.getElementById('courtCasesList');
+  if(!courtCases.length){
+    container.innerHTML = '<p class="admin-empty">No court cases for this building yet.</p>';
+    return;
+  }
+  container.innerHTML = courtCases.map(k => {
+    const lp = latestPetition(k);
+    return `
+    <div class="ticket" data-case-id="${k.id}" style="cursor:pointer;" draggable="false">
+      <div class="stamp ${k.status === 'closed' ? 'low' : 'urgent'}">${k.status}</div>
+      <div class="perf"><span class="tnum">${escapeHtml(k.case_number || 'No case #')}</span></div>
+      <h3>${escapeHtml(k.tenant_name)}${k.apartment ? ' — Apt ' + escapeHtml(k.apartment) : ''}</h3>
+      <p class="desc">
+        ${lp ? `Latest petition: ${fmtMoney(lp.amount)} (${fmtDate(lp.petition_date)})` : 'No petitions recorded yet'}
+      </p>
+      <div class="meta">
+        <span>Payments since: ${fmtMoney(paymentsSinceLastPetition(k))}</span>
+        <span>Balance: ${fmtMoney(currentBalance(k))}</span>
+      </div>
+      <div class="card-badges">
+        <span class="badge">Legal costs: ${fmtMoney(totalCosts(k))}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.querySelectorAll('.ticket').forEach(el => {
+    el.addEventListener('click', () => openCaseDetail(el.dataset.caseId));
+  });
+}
+
+document.getElementById('btnNewCase').addEventListener('click', () => {
+  document.getElementById('caseTenantName').value = '';
+  document.getElementById('caseApartment').value = '';
+  document.getElementById('caseNumber').value = '';
+  document.getElementById('caseOriginalAmount').value = '';
+  document.getElementById('caseOriginalDate').value = '';
+  document.getElementById('newCaseMsg').className = 'login-msg';
+  document.getElementById('newCaseOverlay').classList.add('open');
+});
+document.getElementById('btnCloseNewCase').addEventListener('click', () => {
+  document.getElementById('newCaseOverlay').classList.remove('open');
+});
+document.getElementById('newCaseOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'newCaseOverlay') document.getElementById('newCaseOverlay').classList.remove('open');
+});
+
+document.getElementById('btnCreateCase').addEventListener('click', async () => {
+  const msgEl = document.getElementById('newCaseMsg');
+  msgEl.className = 'login-msg';
+  const tenantName = document.getElementById('caseTenantName').value.trim();
+  const apartment = document.getElementById('caseApartment').value.trim();
+  const caseNumber = document.getElementById('caseNumber').value.trim();
+  const originalAmount = parseFloat(document.getElementById('caseOriginalAmount').value);
+  const originalDate = document.getElementById('caseOriginalDate').value;
+
+  if(!tenantName || isNaN(originalAmount) || !originalDate){
+    msgEl.className = 'login-msg error';
+    msgEl.textContent = 'Tenant name, original amount, and original date are required.';
+    return;
+  }
+
+  try{
+    const { data: newCase, error } = await supabaseClient.from('court_cases').insert({
+      property_id: selectedPropertyId,
+      tenant_name: tenantName,
+      apartment,
+      case_number: caseNumber,
+      status: 'open',
+      created_by: currentUserId
+    }).select('id').single();
+    if(error) throw error;
+
+    const { error: petError } = await supabaseClient.from('court_case_petitions').insert({
+      case_id: newCase.id,
+      amount: originalAmount,
+      petition_date: originalDate,
+      note: 'Original petition'
+    });
+    if(petError) throw petError;
+
+    document.getElementById('newCaseOverlay').classList.remove('open');
+    await loadCourtCases();
+  }catch(err){
+    console.error('Create case failed', err);
+    msgEl.className = 'login-msg error';
+    msgEl.textContent = err.message || 'Could not create the case.';
+  }
+});
+
+async function openCaseDetail(caseId){
+  currentCaseId = caseId;
+  const k = courtCases.find(c => c.id === caseId);
+  if(!k) return;
+
+  document.getElementById('caseDetailTitle').textContent = k.tenant_name + (k.apartment ? ` — Apt ${k.apartment}` : '');
+  document.getElementById('caseDetailSub').textContent = k.case_number ? `Case #${k.case_number}` : 'No case number on file';
+  document.getElementById('caseStatusSelect').value = k.status;
+
+  renderCaseSummary(k);
+  renderPetitionList(k);
+  renderPaymentList(k);
+  renderCostList(k);
+
+  document.getElementById('caseDetailOverlay').classList.add('open');
+}
+
+document.getElementById('btnCloseCaseDetail').addEventListener('click', () => {
+  document.getElementById('caseDetailOverlay').classList.remove('open');
+});
+document.getElementById('caseDetailOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'caseDetailOverlay') document.getElementById('caseDetailOverlay').classList.remove('open');
+});
+
+document.getElementById('caseStatusSelect').addEventListener('change', async (e) => {
+  const { error } = await supabaseClient.from('court_cases').update({ status: e.target.value }).eq('id', currentCaseId);
+  if(error){ console.error(error); return; }
+  await loadCourtCases();
+  const k = courtCases.find(c => c.id === currentCaseId);
+  if(k) renderCaseSummary(k);
+});
+
+document.getElementById('btnDeleteCase').addEventListener('click', async () => {
+  if(!currentCaseId) return;
+  if(!confirm('Delete this case and all its history? This cannot be undone.')) return;
+  const { error } = await supabaseClient.from('court_cases').delete().eq('id', currentCaseId);
+  if(error){ console.error(error); alert('Could not delete: ' + error.message); return; }
+  document.getElementById('caseDetailOverlay').classList.remove('open');
+  await loadCourtCases();
+});
+
+function renderCaseSummary(k){
+  const lp = latestPetition(k);
+  const el = document.getElementById('caseSummary');
+  el.innerHTML = `
+    <div class="admin-row"><span>Original amount sued for</span><span>${k.petitions.length ? fmtMoney(k.petitions[0].amount) + ' (' + fmtDate(k.petitions[0].petition_date) + ')' : '—'}</span></div>
+    <div class="admin-row"><span>Last amended petition</span><span>${lp ? fmtMoney(lp.amount) + ' (' + fmtDate(lp.petition_date) + ')' : '—'}</span></div>
+    <div class="admin-row"><span>Payments since last petition</span><span>${fmtMoney(paymentsSinceLastPetition(k))}</span></div>
+    <div class="admin-row"><span>Current balance</span><span>${fmtMoney(currentBalance(k))}</span></div>
+    <div class="admin-row"><span>Total legal costs so far</span><span>${fmtMoney(totalCosts(k))}</span></div>
+  `;
+}
+
+function renderPetitionList(k){
+  const el = document.getElementById('petitionList');
+  el.innerHTML = k.petitions.length
+    ? [...k.petitions].reverse().map(p => `<div class="admin-row"><span>${fmtDate(p.petition_date)} — ${fmtMoney(p.amount)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span></div>`).join('')
+    : '<span class="admin-empty">No petitions recorded.</span>';
+}
+function renderPaymentList(k){
+  const el = document.getElementById('paymentList');
+  el.innerHTML = k.payments.length
+    ? [...k.payments].reverse().map(p => `<div class="admin-row"><span>${fmtDate(p.payment_date)} — ${fmtMoney(p.amount)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span></div>`).join('')
+    : '<span class="admin-empty">No payments recorded.</span>';
+}
+function renderCostList(k){
+  const el = document.getElementById('costList');
+  el.innerHTML = k.costs.length
+    ? [...k.costs].reverse().map(c => `<div class="admin-row"><span>${c.cost_date ? fmtDate(c.cost_date) + ' — ' : ''}${fmtMoney(c.amount)}${c.description ? ' · ' + escapeHtml(c.description) : ''}</span></div>`).join('')
+    : '<span class="admin-empty">No costs recorded.</span>';
+}
+
+document.getElementById('btnAddPetition').addEventListener('click', async () => {
+  const date = document.getElementById('newPetitionDate').value;
+  const amount = parseFloat(document.getElementById('newPetitionAmount').value);
+  const note = document.getElementById('newPetitionNote').value.trim();
+  if(!date || isNaN(amount)){ alert('Enter a date and amount.'); return; }
+  const { error } = await supabaseClient.from('court_case_petitions').insert({ case_id: currentCaseId, amount, petition_date: date, note });
+  if(error){ alert('Could not add: ' + error.message); return; }
+  document.getElementById('newPetitionDate').value = '';
+  document.getElementById('newPetitionAmount').value = '';
+  document.getElementById('newPetitionNote').value = '';
+  await loadCourtCases();
+  const k = courtCases.find(c => c.id === currentCaseId);
+  if(k){ renderCaseSummary(k); renderPetitionList(k); }
+});
+
+document.getElementById('btnAddPayment').addEventListener('click', async () => {
+  const date = document.getElementById('newPaymentDate').value;
+  const amount = parseFloat(document.getElementById('newPaymentAmount').value);
+  const note = document.getElementById('newPaymentNote').value.trim();
+  if(!date || isNaN(amount)){ alert('Enter a date and amount.'); return; }
+  const { error } = await supabaseClient.from('court_case_payments').insert({ case_id: currentCaseId, amount, payment_date: date, note });
+  if(error){ alert('Could not add: ' + error.message); return; }
+  document.getElementById('newPaymentDate').value = '';
+  document.getElementById('newPaymentAmount').value = '';
+  document.getElementById('newPaymentNote').value = '';
+  await loadCourtCases();
+  const k = courtCases.find(c => c.id === currentCaseId);
+  if(k){ renderCaseSummary(k); renderPaymentList(k); }
+});
+
+document.getElementById('btnAddCost').addEventListener('click', async () => {
+  const date = document.getElementById('newCostDate').value;
+  const amount = parseFloat(document.getElementById('newCostAmount').value);
+  const desc = document.getElementById('newCostDesc').value.trim();
+  if(isNaN(amount)){ alert('Enter an amount.'); return; }
+  const { error } = await supabaseClient.from('court_case_costs').insert({ case_id: currentCaseId, amount, cost_date: date || null, description: desc });
+  if(error){ alert('Could not add: ' + error.message); return; }
+  document.getElementById('newCostDate').value = '';
+  document.getElementById('newCostAmount').value = '';
+  document.getElementById('newCostDesc').value = '';
+  await loadCourtCases();
+  const k = courtCases.find(c => c.id === currentCaseId);
+  if(k){ renderCaseSummary(k); renderCostList(k); }
 });
 
 init();
