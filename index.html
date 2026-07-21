@@ -1068,6 +1068,10 @@
         <input type="date" id="caseOriginalDate">
       </div>
     </div>
+    <div class="field">
+      <label for="caseMonthlyRent">Monthly rent (auto-added to balance on the 1st of each month)</label>
+      <input type="number" step="0.01" id="caseMonthlyRent">
+    </div>
     <div class="modal-actions">
       <button type="button" class="btn-secondary" id="btnCloseNewCase">Cancel</button>
       <button type="button" class="btn-primary" id="btnCreateCase">Create Case</button>
@@ -1086,13 +1090,28 @@
     <div class="admin-property" style="margin-top:0;">
       <h3>Summary</h3>
       <div id="caseSummary"></div>
-      <div class="field" style="margin:14px 0 0;">
-        <label for="caseStatusSelect">Status</label>
-        <select id="caseStatusSelect">
-          <option value="open">Open</option>
-          <option value="closed">Closed</option>
-        </select>
+      <div class="row2" style="margin-top:14px;">
+        <div class="field" style="margin-bottom:0;">
+          <label for="caseStatusSelect">Status</label>
+          <select id="caseStatusSelect">
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="caseMonthlyRentEdit">Monthly rent</label>
+          <div style="display:flex; gap:6px;">
+            <input type="number" step="0.01" id="caseMonthlyRentEdit" style="flex:1;">
+            <button type="button" class="btn-attach" id="btnSaveMonthlyRent">Save</button>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <div class="admin-property">
+      <h3>Rent charges (auto-added monthly)</h3>
+      <div id="rentChargeList"></div>
+      <p class="attach-hint" style="margin-top:8px;">These are added automatically for each month that's passed since the case opened — no need to add them by hand.</p>
     </div>
 
     <div class="admin-property">
@@ -2738,10 +2757,49 @@ function paymentsSinceLastPetition(kase){
 function totalCosts(kase){
   return kase.costs.reduce((s, c) => s + Number(c.amount), 0);
 }
-function currentBalance(kase){
+function remainingOnPetition(kase){
   const lp = latestPetition(kase);
   if(!lp) return 0;
   return Number(lp.amount) - paymentsSinceLastPetition(kase);
+}
+function balanceOwed(kase){
+  const original = kase.petitions.length ? Number(kase.petitions[0].amount) : 0;
+  const rentAccrued = kase.rentCharges.reduce((s, r) => s + Number(r.amount), 0);
+  const totalPayments = kase.payments.reduce((s, p) => s + Number(p.amount), 0);
+  return original + rentAccrued - totalPayments;
+}
+
+/* Auto-add a rent charge for every 1st-of-the-month that's passed since
+   the case's original petition date and hasn't been charged yet. Runs
+   whenever cases are loaded, so it "catches up" whenever the app is
+   next opened rather than firing in the background in real time. */
+async function ensureRentChargesUpToDate(kase){
+  if(!kase.monthly_rent || Number(kase.monthly_rent) <= 0) return false;
+  if(kase.status !== 'open') return false;
+  const firstPetition = kase.petitions.length ? kase.petitions[0] : null;
+  if(!firstPetition) return false;
+
+  const start = new Date(firstPetition.petition_date);
+  let cursor = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+  const now = new Date();
+  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const existingDates = new Set(kase.rentCharges.map(r => r.charge_date));
+  const toInsert = [];
+  while(cursor <= thisMonth){
+    const iso = cursor.toISOString().slice(0, 10);
+    if(!existingDates.has(iso)){
+      toInsert.push({ case_id: kase.id, charge_date: iso, amount: kase.monthly_rent });
+    }
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+
+  if(toInsert.length){
+    const { error } = await supabaseClient.from('court_case_rent_charges').insert(toInsert);
+    if(error){ console.error('Rent charge accrual failed', error); return false; }
+    return true;
+  }
+  return false;
 }
 
 function showBoardView(){
@@ -2774,24 +2832,37 @@ async function loadCourtCases(){
   if(error){ console.error('Load court cases failed', error); return; }
 
   const caseIds = cases.map(c => c.id);
-  let petitions = [], payments = [], costs = [];
+  let petitions = [], payments = [], costs = [], rentCharges = [];
   if(caseIds.length){
-    const [p, pay, c] = await Promise.all([
+    const [p, pay, c, rc] = await Promise.all([
       supabaseClient.from('court_case_petitions').select('*').in('case_id', caseIds).order('petition_date', { ascending: true }),
       supabaseClient.from('court_case_payments').select('*').in('case_id', caseIds).order('payment_date', { ascending: true }),
-      supabaseClient.from('court_case_costs').select('*').in('case_id', caseIds).order('cost_date', { ascending: true })
+      supabaseClient.from('court_case_costs').select('*').in('case_id', caseIds).order('cost_date', { ascending: true }),
+      supabaseClient.from('court_case_rent_charges').select('*').in('case_id', caseIds).order('charge_date', { ascending: true })
     ]);
     petitions = p.data || [];
     payments = pay.data || [];
     costs = c.data || [];
+    rentCharges = rc.data || [];
   }
 
   courtCases = cases.map(c => ({
     ...c,
     petitions: petitions.filter(x => x.case_id === c.id),
     payments: payments.filter(x => x.case_id === c.id),
-    costs: costs.filter(x => x.case_id === c.id)
+    costs: costs.filter(x => x.case_id === c.id),
+    rentCharges: rentCharges.filter(x => x.case_id === c.id)
   }));
+
+  // Catch up any months of rent that accrued since we last looked.
+  let anyAccrued = false;
+  for(const kase of courtCases){
+    const accrued = await ensureRentChargesUpToDate(kase);
+    if(accrued) anyAccrued = true;
+  }
+  if(anyAccrued){
+    return loadCourtCases(); // re-fetch once with the new charges included
+  }
 
   renderCourtCasesList();
 }
@@ -2810,11 +2881,11 @@ function renderCourtCasesList(){
       <div class="perf"><span class="tnum">${escapeHtml(k.case_number || 'No case #')}</span></div>
       <h3>${escapeHtml(k.tenant_name)}${k.apartment ? ' — Apt ' + escapeHtml(k.apartment) : ''}</h3>
       <p class="desc">
-        ${lp ? `Latest petition: ${fmtMoney(lp.amount)} (${fmtDate(lp.petition_date)})` : 'No petitions recorded yet'}
+        ${lp ? `Petition: ${fmtMoney(lp.amount)} (${fmtDate(lp.petition_date)})` : 'No petitions recorded yet'}
       </p>
       <div class="meta">
-        <span>Payments since: ${fmtMoney(paymentsSinceLastPetition(k))}</span>
-        <span>Balance: ${fmtMoney(currentBalance(k))}</span>
+        <span>Balance owed: ${fmtMoney(balanceOwed(k))}</span>
+        <span>Remaining on petition: ${fmtMoney(remainingOnPetition(k))}</span>
       </div>
       <div class="card-badges">
         <span class="badge">Legal costs: ${fmtMoney(totalCosts(k))}</span>
@@ -2851,6 +2922,7 @@ document.getElementById('btnCreateCase').addEventListener('click', async () => {
   const caseNumber = document.getElementById('caseNumber').value.trim();
   const originalAmount = parseFloat(document.getElementById('caseOriginalAmount').value);
   const originalDate = document.getElementById('caseOriginalDate').value;
+  const monthlyRent = parseFloat(document.getElementById('caseMonthlyRent').value) || 0;
 
   if(!tenantName || isNaN(originalAmount) || !originalDate){
     msgEl.className = 'login-msg error';
@@ -2865,6 +2937,7 @@ document.getElementById('btnCreateCase').addEventListener('click', async () => {
       apartment,
       case_number: caseNumber,
       status: 'open',
+      monthly_rent: monthlyRent,
       created_by: currentUserId
     }).select('id').single();
     if(error) throw error;
@@ -2894,8 +2967,10 @@ async function openCaseDetail(caseId){
   document.getElementById('caseDetailTitle').textContent = k.tenant_name + (k.apartment ? ` — Apt ${k.apartment}` : '');
   document.getElementById('caseDetailSub').textContent = k.case_number ? `Case #${k.case_number}` : 'No case number on file';
   document.getElementById('caseStatusSelect').value = k.status;
+  document.getElementById('caseMonthlyRentEdit').value = k.monthly_rent || '';
 
   renderCaseSummary(k);
+  renderRentChargeList(k);
   renderPetitionList(k);
   renderPaymentList(k);
   renderCostList(k);
@@ -2931,13 +3006,30 @@ function renderCaseSummary(k){
   const lp = latestPetition(k);
   const el = document.getElementById('caseSummary');
   el.innerHTML = `
+    <div class="admin-row"><span>Tenant's total balance owed</span><span>${fmtMoney(balanceOwed(k))}</span></div>
     <div class="admin-row"><span>Original amount sued for</span><span>${k.petitions.length ? fmtMoney(k.petitions[0].amount) + ' (' + fmtDate(k.petitions[0].petition_date) + ')' : '—'}</span></div>
-    <div class="admin-row"><span>Last amended petition</span><span>${lp ? fmtMoney(lp.amount) + ' (' + fmtDate(lp.petition_date) + ')' : '—'}</span></div>
+    <div class="admin-row"><span>Current petition amount</span><span>${lp ? fmtMoney(lp.amount) + ' (' + fmtDate(lp.petition_date) + ')' : '—'}</span></div>
     <div class="admin-row"><span>Payments since last petition</span><span>${fmtMoney(paymentsSinceLastPetition(k))}</span></div>
-    <div class="admin-row"><span>Current balance</span><span>${fmtMoney(currentBalance(k))}</span></div>
+    <div class="admin-row"><span>Remaining on petition until satisfied</span><span>${fmtMoney(remainingOnPetition(k))}</span></div>
     <div class="admin-row"><span>Total legal costs so far</span><span>${fmtMoney(totalCosts(k))}</span></div>
   `;
 }
+
+function renderRentChargeList(k){
+  const el = document.getElementById('rentChargeList');
+  el.innerHTML = k.rentCharges.length
+    ? [...k.rentCharges].reverse().map(r => `<div class="admin-row"><span>${fmtDate(r.charge_date)} — ${fmtMoney(r.amount)} rent added</span></div>`).join('')
+    : '<span class="admin-empty">No rent charges yet — they start accruing the month after the case opened.</span>';
+}
+
+document.getElementById('btnSaveMonthlyRent').addEventListener('click', async () => {
+  const val = parseFloat(document.getElementById('caseMonthlyRentEdit').value) || 0;
+  const { error } = await supabaseClient.from('court_cases').update({ monthly_rent: val }).eq('id', currentCaseId);
+  if(error){ alert('Could not save: ' + error.message); return; }
+  await loadCourtCases();
+  const k = courtCases.find(c => c.id === currentCaseId);
+  if(k){ renderCaseSummary(k); renderRentChargeList(k); }
+});
 
 function renderPetitionList(k){
   const el = document.getElementById('petitionList');
