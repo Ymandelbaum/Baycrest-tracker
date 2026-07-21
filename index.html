@@ -807,6 +807,44 @@
     color:var(--ink-soft);
   }
 
+  /* ---------- Court case cards ---------- */
+  #courtCasesList{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));
+    gap:16px;
+    align-items:start;
+  }
+  .case-card{
+    background:var(--panel);
+    color:var(--ink);
+    border-radius:14px;
+    padding:16px;
+    position:relative;
+    cursor:pointer;
+    border:1px solid var(--line);
+    box-shadow:0 2px 6px rgba(46,39,24,0.10), 0 1px 3px rgba(46,39,24,0.06);
+    transition:transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+  }
+  .case-card:hover{ transform:translateY(-2px); box-shadow:0 10px 22px rgba(46,39,24,0.16); border-color:var(--gold); }
+  .case-stats{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px 14px;
+    margin-top:12px;
+    padding-top:12px;
+    border-top:1px solid var(--line-soft);
+  }
+  .case-stat{ display:flex; flex-direction:column; gap:2px; }
+  .case-stat.full{ grid-column:1 / -1; }
+  .case-stat-label{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    text-transform:uppercase;
+    letter-spacing:0.3px;
+    color:var(--ink-soft);
+  }
+  .case-stat-value{ font-size:14.5px; font-weight:600; color:var(--ink); }
+
   ::-webkit-scrollbar{ width:8px; height:8px; }
   ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
 </style>
@@ -2886,24 +2924,22 @@ function renderCourtCasesList(){
   container.innerHTML = courtCases.map(k => {
     const lp = latestPetition(k);
     return `
-    <div class="ticket" data-case-id="${k.id}" style="cursor:pointer;" draggable="false">
+    <div class="case-card" data-case-id="${k.id}">
       <div class="stamp ${k.status === 'closed' ? 'low' : 'urgent'}">${k.status}</div>
       <div class="perf"><span class="tnum">${escapeHtml(k.case_number || 'No case #')}</span></div>
       <h3>${escapeHtml(k.tenant_name)}${k.apartment ? ' — Apt ' + escapeHtml(k.apartment) : ''}</h3>
       <p class="desc">
         ${lp ? `Petition: ${fmtMoney(lp.amount)} (${fmtDate(lp.petition_date)})` : 'No petitions recorded yet'}
       </p>
-      <div class="meta">
-        <span>Balance owed: ${fmtMoney(balanceOwed(k))}</span>
-        <span>Remaining to satisfy: ${fmtMoney(remainingOnPetition(k))}</span>
-      </div>
-      <div class="card-badges">
-        <span class="badge">Legal costs: ${fmtMoney(totalCosts(k))}</span>
+      <div class="case-stats">
+        <div class="case-stat"><span class="case-stat-label">Balance owed</span><span class="case-stat-value">${fmtMoney(balanceOwed(k))}</span></div>
+        <div class="case-stat"><span class="case-stat-label">Remaining to satisfy</span><span class="case-stat-value">${fmtMoney(remainingOnPetition(k))}</span></div>
+        <div class="case-stat full"><span class="case-stat-label">Legal costs</span><span class="case-stat-value">${fmtMoney(totalCosts(k))}</span></div>
       </div>
     </div>`;
   }).join('');
 
-  container.querySelectorAll('.ticket').forEach(el => {
+  container.querySelectorAll('.case-card').forEach(el => {
     el.addEventListener('click', () => openCaseDetail(el.dataset.caseId));
   });
 }
