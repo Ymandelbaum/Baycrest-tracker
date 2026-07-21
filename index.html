@@ -1134,6 +1134,31 @@
     <p style="margin:0 0 20px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--ink-soft);" id="caseDetailSub"></p>
 
     <div class="admin-property" style="margin-top:0;">
+      <h3>Case info</h3>
+      <div class="field">
+        <label for="caseTenantNameEdit">Tenant name</label>
+        <input type="text" id="caseTenantNameEdit">
+      </div>
+      <div class="field">
+        <label for="casePropertyEdit">Building</label>
+        <select id="casePropertyEdit"></select>
+      </div>
+      <div class="row2">
+        <div class="field" style="margin-bottom:0;">
+          <label for="caseApartmentEdit">Apartment</label>
+          <input type="text" id="caseApartmentEdit">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="caseNumberEdit">Case number</label>
+          <input type="text" id="caseNumberEdit">
+        </div>
+      </div>
+      <div class="modal-actions" style="margin-top:12px;">
+        <button type="button" class="btn-attach" id="btnSaveCaseInfo">Save case info</button>
+      </div>
+    </div>
+
+    <div class="admin-property">
       <h3>Summary</h3>
       <div id="caseSummary"></div>
       <div class="row2" style="margin-top:14px;">
@@ -3122,6 +3147,15 @@ async function openCaseDetail(caseId){
   document.getElementById('caseMonthlyRentEdit').value = k.monthly_rent || '';
   document.getElementById('caseNextHearingEdit').value = k.next_hearing_date || '';
 
+  document.getElementById('caseTenantNameEdit').value = k.tenant_name || '';
+  document.getElementById('caseApartmentEdit').value = k.apartment || '';
+  document.getElementById('caseNumberEdit').value = k.case_number || '';
+  const owned = properties.filter(p => p.role === 'owner');
+  const propSel = document.getElementById('casePropertyEdit');
+  propSel.innerHTML = owned.map(p =>
+    `<option value="${p.id}" ${p.id === k.property_id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+  ).join('');
+
   renderCaseSummary(k);
   renderRentChargeList(k);
   renderPetitionList(k);
@@ -3172,8 +3206,22 @@ function renderCaseSummary(k){
 function renderRentChargeList(k){
   const el = document.getElementById('rentChargeList');
   el.innerHTML = k.rentCharges.length
-    ? [...k.rentCharges].reverse().map(r => `<div class="admin-row"><span>${fmtDate(r.charge_date)} — ${fmtMoney(r.amount)} rent added</span></div>`).join('')
+    ? [...k.rentCharges].reverse().map(r => `<div class="admin-row"><span>${fmtDate(r.charge_date)} — ${fmtMoney(r.amount)} rent added</span><button type="button" class="admin-remove" data-table="court_case_rent_charges" data-id="${r.id}">Remove</button></div>`).join('')
     : '<span class="admin-empty">No rent charges yet — they start accruing the month after the case opened.</span>';
+  wireLogDeleteButtons(el, k, renderRentChargeList);
+}
+
+function wireLogDeleteButtons(el, k, rerenderFn){
+  el.querySelectorAll('.admin-remove').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if(!confirm('Remove this entry?')) return;
+      const { error } = await supabaseClient.from(btn.dataset.table).delete().eq('id', btn.dataset.id);
+      if(error){ alert('Could not remove: ' + error.message); return; }
+      await loadCourtCases();
+      const updated = courtCases.find(c => c.id === currentCaseId);
+      if(updated){ renderCaseSummary(updated); rerenderFn(updated); }
+    });
+  });
 }
 
 document.getElementById('btnSaveMonthlyRent').addEventListener('click', async () => {
@@ -3196,23 +3244,65 @@ document.getElementById('btnSaveHearingDate').addEventListener('click', async ()
   await refreshHearingFollowups();
 });
 
+document.getElementById('btnSaveCaseInfo').addEventListener('click', async () => {
+  const tenantName = document.getElementById('caseTenantNameEdit').value.trim();
+  const apartment = document.getElementById('caseApartmentEdit').value.trim();
+  const caseNumber = document.getElementById('caseNumberEdit').value.trim();
+  const newPropertyId = document.getElementById('casePropertyEdit').value;
+  if(!tenantName){ alert('Tenant name is required.'); return; }
+
+  const existing = courtCases.find(c => c.id === currentCaseId);
+  const moved = existing && newPropertyId && newPropertyId !== existing.property_id;
+
+  const { error } = await supabaseClient.from('court_cases').update({
+    tenant_name: tenantName,
+    apartment,
+    case_number: caseNumber,
+    property_id: newPropertyId
+  }).eq('id', currentCaseId);
+  if(error){ alert('Could not save: ' + error.message); return; }
+
+  if(moved){
+    document.getElementById('caseDetailOverlay').classList.remove('open');
+    const newName = properties.find(p => p.id === newPropertyId)?.name || 'the new building';
+    if(newPropertyId === selectedPropertyId){
+      await loadCourtCases();
+    } else {
+      await loadCourtCases();
+    }
+    await refreshHearingFollowups();
+    alert(`Moved to ${newName}.`);
+    return;
+  }
+
+  await loadCourtCases();
+  const k = courtCases.find(c => c.id === currentCaseId);
+  if(k){
+    document.getElementById('caseDetailTitle').textContent = k.tenant_name + (k.apartment ? ` — Apt ${k.apartment}` : '');
+    document.getElementById('caseDetailSub').textContent = k.case_number ? `Case #${k.case_number}` : 'No case number on file';
+  }
+});
+
 function renderPetitionList(k){
   const el = document.getElementById('petitionList');
   el.innerHTML = k.petitions.length
-    ? [...k.petitions].reverse().map(p => `<div class="admin-row"><span>${fmtDate(p.petition_date)} — ${fmtMoney(p.amount)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span></div>`).join('')
+    ? [...k.petitions].reverse().map(p => `<div class="admin-row"><span>${fmtDate(p.petition_date)} — ${fmtMoney(p.amount)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span><button type="button" class="admin-remove" data-table="court_case_petitions" data-id="${p.id}">Remove</button></div>`).join('')
     : '<span class="admin-empty">No petitions recorded.</span>';
+  wireLogDeleteButtons(el, k, renderPetitionList);
 }
 function renderPaymentList(k){
   const el = document.getElementById('paymentList');
   el.innerHTML = k.payments.length
-    ? [...k.payments].reverse().map(p => `<div class="admin-row"><span>${fmtDate(p.payment_date)} — ${fmtMoney(p.amount)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span></div>`).join('')
+    ? [...k.payments].reverse().map(p => `<div class="admin-row"><span>${fmtDate(p.payment_date)} — ${fmtMoney(p.amount)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span><button type="button" class="admin-remove" data-table="court_case_payments" data-id="${p.id}">Remove</button></div>`).join('')
     : '<span class="admin-empty">No payments recorded.</span>';
+  wireLogDeleteButtons(el, k, renderPaymentList);
 }
 function renderCostList(k){
   const el = document.getElementById('costList');
   el.innerHTML = k.costs.length
-    ? [...k.costs].reverse().map(c => `<div class="admin-row"><span>${c.cost_date ? fmtDate(c.cost_date) + ' — ' : ''}${fmtMoney(c.amount)}${c.description ? ' · ' + escapeHtml(c.description) : ''}</span></div>`).join('')
+    ? [...k.costs].reverse().map(c => `<div class="admin-row"><span>${c.cost_date ? fmtDate(c.cost_date) + ' — ' : ''}${fmtMoney(c.amount)}${c.description ? ' · ' + escapeHtml(c.description) : ''}</span><button type="button" class="admin-remove" data-table="court_case_costs" data-id="${c.id}">Remove</button></div>`).join('')
     : '<span class="admin-empty">No costs recorded.</span>';
+  wireLogDeleteButtons(el, k, renderCostList);
 }
 
 document.getElementById('btnAddPetition').addEventListener('click', async () => {
