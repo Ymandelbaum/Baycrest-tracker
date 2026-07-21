@@ -1171,21 +1171,12 @@
     <div class="admin-property">
       <h3>Summary</h3>
       <div id="caseSummary"></div>
-      <div class="row2" style="margin-top:14px;">
-        <div class="field" style="margin-bottom:0;">
-          <label for="caseStatusSelect">Status</label>
-          <select id="caseStatusSelect">
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-          </select>
-        </div>
-        <div class="field" style="margin-bottom:0;">
-          <label for="caseMonthlyRentEdit">Monthly rent</label>
-          <div style="display:flex; gap:6px;">
-            <input type="number" step="0.01" id="caseMonthlyRentEdit" style="flex:1;">
-            <button type="button" class="btn-attach" id="btnSaveMonthlyRent">Save</button>
-          </div>
-        </div>
+      <div class="field" style="margin-top:14px; margin-bottom:0;">
+        <label for="caseStatusSelect">Status</label>
+        <select id="caseStatusSelect">
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+        </select>
       </div>
       <div class="field" style="margin-top:14px; margin-bottom:0;">
         <label for="caseNextHearingEdit">Next hearing date</label>
@@ -1195,6 +1186,17 @@
         </div>
         <p class="attach-hint">Saving a date automatically schedules a follow-up reminder for the day after.</p>
       </div>
+    </div>
+
+    <div class="admin-property">
+      <h3>Rent amount history</h3>
+      <div id="rentRateList"></div>
+      <div class="admin-invite-row">
+        <input type="date" id="newRentRateDate" style="flex:0 0 150px;">
+        <input type="number" step="0.01" placeholder="New monthly rent" id="newRentRateAmount" style="flex:0 0 150px;">
+        <button type="button" class="btn-attach" id="btnAddRentRate">+ Add rent change</button>
+      </div>
+      <p class="attach-hint">A rent increase only affects charges from its effective date onward — earlier months keep the old rate.</p>
     </div>
 
     <div class="admin-property">
@@ -2939,13 +2941,39 @@ function balanceOwed(kase){
   return original + rentAccrued - totalPayments;
 }
 
-/* Auto-add a rent charge for every 1st-of-the-month that's passed since
-   the case's original petition date and hasn't been charged yet. Runs
-   whenever cases are loaded, so it "catches up" whenever the app is
-   next opened rather than firing in the background in real time. */
-async function ensureRentChargesUpToDate(kase){
+function rateForMonth(kase, monthDate){
+  let applicable = null;
+  for(const r of kase.rentRates){ // sorted ascending by effective_date
+    const eff = new Date(r.effective_date + 'T00:00:00');
+    if(eff <= monthDate) applicable = r;
+    else break;
+  }
+  return applicable ? Number(applicable.rent_amount) : 0;
+}
+
+/* Cases created before rent-rate history existed only have the old flat
+   monthly_rent value — give them a starting rate row once, using the
+   original petition date as when that rate took effect. */
+async function ensureInitialRentRate(kase){
+  if(kase.rentRates.length) return false;
   if(!kase.monthly_rent || Number(kase.monthly_rent) <= 0) return false;
+  const firstPetition = kase.petitions.length ? kase.petitions[0] : null;
+  if(!firstPetition) return false;
+  const { error } = await supabaseClient.from('court_case_rent_rates').insert({
+    case_id: kase.id, rent_amount: kase.monthly_rent, effective_date: firstPetition.petition_date
+  });
+  if(error){ console.error('Initial rent rate backfill failed', error); return false; }
+  return true;
+}
+
+/* Auto-add a rent charge for every 1st-of-the-month that's passed since
+   the case's original petition date and hasn't been charged yet, using
+   whichever rent rate was in effect for that month. Runs whenever cases
+   are loaded, so it "catches up" whenever the app is next opened rather
+   than firing in the background in real time. */
+async function ensureRentChargesUpToDate(kase){
   if(kase.status !== 'open') return false;
+  if(!kase.rentRates.length) return false;
   const firstPetition = kase.petitions.length ? kase.petitions[0] : null;
   if(!firstPetition) return false;
 
@@ -2959,7 +2987,8 @@ async function ensureRentChargesUpToDate(kase){
   while(cursor <= thisMonth){
     const iso = cursor.toISOString().slice(0, 10);
     if(!existingDates.has(iso)){
-      toInsert.push({ case_id: kase.id, charge_date: iso, amount: kase.monthly_rent });
+      const amt = rateForMonth(kase, cursor);
+      if(amt > 0) toInsert.push({ case_id: kase.id, charge_date: iso, amount: amt });
     }
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
@@ -3002,18 +3031,20 @@ async function loadCourtCases(){
   if(error){ console.error('Load court cases failed', error); return; }
 
   const caseIds = cases.map(c => c.id);
-  let petitions = [], payments = [], costs = [], rentCharges = [];
+  let petitions = [], payments = [], costs = [], rentCharges = [], rentRates = [];
   if(caseIds.length){
-    const [p, pay, c, rc] = await Promise.all([
+    const [p, pay, c, rc, rr] = await Promise.all([
       supabaseClient.from('court_case_petitions').select('*').in('case_id', caseIds).order('petition_date', { ascending: true }),
       supabaseClient.from('court_case_payments').select('*').in('case_id', caseIds).order('payment_date', { ascending: true }),
       supabaseClient.from('court_case_costs').select('*').in('case_id', caseIds).order('cost_date', { ascending: true }),
-      supabaseClient.from('court_case_rent_charges').select('*').in('case_id', caseIds).order('charge_date', { ascending: true })
+      supabaseClient.from('court_case_rent_charges').select('*').in('case_id', caseIds).order('charge_date', { ascending: true }),
+      supabaseClient.from('court_case_rent_rates').select('*').in('case_id', caseIds).order('effective_date', { ascending: true })
     ]);
     petitions = p.data || [];
     payments = pay.data || [];
     costs = c.data || [];
     rentCharges = rc.data || [];
+    rentRates = rr.data || [];
   }
 
   courtCases = cases.map(c => ({
@@ -3021,8 +3052,19 @@ async function loadCourtCases(){
     petitions: petitions.filter(x => x.case_id === c.id),
     payments: payments.filter(x => x.case_id === c.id),
     costs: costs.filter(x => x.case_id === c.id),
-    rentCharges: rentCharges.filter(x => x.case_id === c.id)
+    rentCharges: rentCharges.filter(x => x.case_id === c.id),
+    rentRates: rentRates.filter(x => x.case_id === c.id)
   }));
+
+  // Give any old flat-rate cases a starting rate row, once.
+  let anyBackfilled = false;
+  for(const kase of courtCases){
+    const backfilled = await ensureInitialRentRate(kase);
+    if(backfilled) anyBackfilled = true;
+  }
+  if(anyBackfilled){
+    return loadCourtCases();
+  }
 
   // Catch up any months of rent that accrued since we last looked.
   let anyAccrued = false;
@@ -3136,6 +3178,15 @@ document.getElementById('btnCreateCase').addEventListener('click', async () => {
     });
     if(petError) throw petError;
 
+    if(monthlyRent > 0){
+      const { error: rateError } = await supabaseClient.from('court_case_rent_rates').insert({
+        case_id: newCase.id,
+        rent_amount: monthlyRent,
+        effective_date: originalDate
+      });
+      if(rateError) throw rateError;
+    }
+
     document.getElementById('newCaseOverlay').classList.remove('open');
     if(targetPropertyId === selectedPropertyId) await loadCourtCases();
     await refreshHearingFollowups();
@@ -3154,7 +3205,6 @@ async function openCaseDetail(caseId){
   document.getElementById('caseDetailTitle').textContent = k.tenant_name + (k.apartment ? ` — Apt ${k.apartment}` : '');
   document.getElementById('caseDetailSub').textContent = k.case_number ? `Case #${k.case_number}` : 'No case number on file';
   document.getElementById('caseStatusSelect').value = k.status;
-  document.getElementById('caseMonthlyRentEdit').value = k.monthly_rent || '';
   document.getElementById('caseNextHearingEdit').value = k.next_hearing_date || '';
 
   document.getElementById('caseTenantNameEdit').value = k.tenant_name || '';
@@ -3167,6 +3217,7 @@ async function openCaseDetail(caseId){
   ).join('');
 
   renderCaseSummary(k);
+  renderRentRateList(k);
   renderRentChargeList(k);
   renderPetitionList(k);
   renderPaymentList(k);
@@ -3273,13 +3324,35 @@ function wireLogSaveButtons(el, table, fields, rerenderFn){
   });
 }
 
-document.getElementById('btnSaveMonthlyRent').addEventListener('click', async () => {
-  const val = parseFloat(document.getElementById('caseMonthlyRentEdit').value) || 0;
-  const { error } = await supabaseClient.from('court_cases').update({ monthly_rent: val }).eq('id', currentCaseId);
-  if(error){ alert('Could not save: ' + error.message); return; }
+function renderRentRateList(k){
+  const el = document.getElementById('rentRateList');
+  el.innerHTML = k.rentRates.length
+    ? [...k.rentRates].reverse().map(r => `
+      <div class="admin-row" style="justify-content:flex-start; flex-wrap:wrap;">
+        <input type="date" class="inline-edit-input" data-field="effective_date" value="${r.effective_date}" style="flex:0 0 140px;">
+        <input type="number" step="0.01" class="inline-edit-input" data-field="rent_amount" value="${r.rent_amount}" style="flex:0 0 120px;">
+        <button type="button" class="admin-remove save-row" data-id="${r.id}">Save</button>
+        <button type="button" class="admin-remove" data-table="court_case_rent_rates" data-id="${r.id}">Remove</button>
+      </div>
+    `).join('')
+    : '<span class="admin-empty">No rent set yet.</span>';
+  wireLogSaveButtons(el, 'court_case_rent_rates', [
+    { name: 'effective_date', type: 'date' }, { name: 'rent_amount', type: 'number' }
+  ], renderRentRateList);
+  wireLogDeleteButtons(el, k, renderRentRateList);
+}
+
+document.getElementById('btnAddRentRate').addEventListener('click', async () => {
+  const date = document.getElementById('newRentRateDate').value;
+  const amount = parseFloat(document.getElementById('newRentRateAmount').value);
+  if(!date || isNaN(amount)){ alert('Enter a date and amount.'); return; }
+  const { error } = await supabaseClient.from('court_case_rent_rates').insert({ case_id: currentCaseId, rent_amount: amount, effective_date: date });
+  if(error){ alert('Could not add: ' + error.message); return; }
+  document.getElementById('newRentRateDate').value = '';
+  document.getElementById('newRentRateAmount').value = '';
   await loadCourtCases();
   const k = courtCases.find(c => c.id === currentCaseId);
-  if(k){ renderCaseSummary(k); renderRentChargeList(k); }
+  if(k){ renderCaseSummary(k); renderRentRateList(k); renderRentChargeList(k); }
 });
 
 document.getElementById('btnSaveHearingDate').addEventListener('click', async () => {
@@ -3446,7 +3519,7 @@ function wireEnterToSubmit(inputIds, buttonId){
     });
   });
 }
-wireEnterToSubmit(['caseMonthlyRentEdit'], 'btnSaveMonthlyRent');
+wireEnterToSubmit(['newRentRateDate', 'newRentRateAmount'], 'btnAddRentRate');
 wireEnterToSubmit(['caseNextHearingEdit'], 'btnSaveHearingDate');
 wireEnterToSubmit(['newPetitionDate', 'newPetitionAmount', 'newPetitionNote'], 'btnAddPetition');
 wireEnterToSubmit(['newPaymentDate', 'newPaymentAmount', 'newPaymentNote'], 'btnAddPayment');
