@@ -892,6 +892,11 @@
     </div>
   </div>
 
+  <div class="reminders-banner" id="remindersBanner">
+    <p class="reminders-banner-title">🔔 Due reminders</p>
+    <div id="remindersList"></div>
+  </div>
+
   <div id="boardView">
     <div class="controls">
       <div class="ctrl-group">
@@ -916,11 +921,6 @@
           <option value="due">Due date</option>
         </select>
       </div>
-    </div>
-
-    <div class="reminders-banner" id="remindersBanner">
-      <p class="reminders-banner-title">🔔 Due reminders</p>
-      <div id="remindersList"></div>
     </div>
 
     <div class="board" id="board"></div>
@@ -1114,6 +1114,10 @@
       <label for="caseMonthlyRent">Monthly rent (auto-added to balance on the 1st of each month)</label>
       <input type="number" step="0.01" id="caseMonthlyRent">
     </div>
+    <div class="field">
+      <label for="caseNextHearing">Next hearing date (optional)</label>
+      <input type="date" id="caseNextHearing">
+    </div>
     <div class="modal-actions">
       <button type="button" class="btn-secondary" id="btnCloseNewCase">Cancel</button>
       <button type="button" class="btn-primary" id="btnCreateCase">Create Case</button>
@@ -1147,6 +1151,14 @@
             <button type="button" class="btn-attach" id="btnSaveMonthlyRent">Save</button>
           </div>
         </div>
+      </div>
+      <div class="field" style="margin-top:14px; margin-bottom:0;">
+        <label for="caseNextHearingEdit">Next hearing date</label>
+        <div style="display:flex; gap:6px;">
+          <input type="date" id="caseNextHearingEdit" style="flex:1;">
+          <button type="button" class="btn-attach" id="btnSaveHearingDate">Save</button>
+        </div>
+        <p class="attach-hint">Saving a date automatically schedules a follow-up reminder for the day after.</p>
       </div>
     </div>
 
@@ -2333,19 +2345,65 @@ function fmtTime(hhmm){
   return d.toLocaleTimeString(undefined, { hour:'numeric', minute:'2-digit' });
 }
 
+let hearingCandidates = [];
+
+async function refreshHearingFollowups(){
+  if(!multiPropertyMode){ return; }
+  const owned = properties.filter(p => p.role === 'owner').map(p => p.id);
+  if(!owned.length){ hearingCandidates = []; checkReminders(); return; }
+  const { data, error } = await supabaseClient
+    .from('court_cases')
+    .select('id, tenant_name, apartment, next_hearing_date, property_id')
+    .eq('status', 'open')
+    .not('next_hearing_date', 'is', null)
+    .eq('hearing_followup_dismissed', false)
+    .in('property_id', owned);
+  if(error){ console.error('Load hearing followups failed', error); return; }
+  hearingCandidates = data || [];
+  checkReminders();
+}
+
+function isHearingFollowupDue(c){
+  if(!c.next_hearing_date) return false;
+  const hearing = new Date(c.next_hearing_date + 'T00:00:00');
+  const followUp = new Date(hearing);
+  followUp.setDate(followUp.getDate() + 1);
+  return new Date() >= followUp;
+}
+
+async function dismissHearingFollowup(caseId){
+  const { error } = await supabaseClient.from('court_cases').update({ hearing_followup_dismissed: true }).eq('id', caseId);
+  if(error){ console.error('Dismiss hearing followup failed', error); return; }
+  await refreshHearingFollowups();
+  if(document.getElementById('courtView').style.display !== 'none') await loadCourtCases();
+}
+
 function checkReminders(){
-  const due = tickets.filter(t => t.reminder && isReminderDueNow(t));
+  const dueTickets = tickets.filter(t => t.reminder && isReminderDueNow(t)).map(t => ({ kind: 'ticket', data: t }));
+  const dueHearings = hearingCandidates.filter(isHearingFollowupDue).map(c => ({ kind: 'hearing', data: c }));
+  const due = [...dueTickets, ...dueHearings];
   renderRemindersBanner(due);
 
-  due.forEach(t => {
+  dueTickets.forEach(({ data: t }) => {
     const periodKey = t.reminder.type === 'once' ? (t.reminder.date + t.reminder.time)
       : t.reminder.type === 'weekly' ? weekKeyFor(new Date())
       : new Date().toDateString();
-    const key = t.id + '_' + periodKey;
+    const key = 'ticket_' + t.id + '_' + periodKey;
     if(!notifiedKeys.has(key)){
       notifiedKeys.add(key);
       if(window.Notification && Notification.permission === 'granted'){
         try{ new Notification('Reminder: ' + t.title, { body: ticketNumber(t.num) }); }
+        catch(e){ /* ignore */ }
+      }
+    }
+  });
+
+  dueHearings.forEach(({ data: c }) => {
+    const key = 'hearing_' + c.id + '_' + c.next_hearing_date;
+    if(!notifiedKeys.has(key)){
+      notifiedKeys.add(key);
+      if(window.Notification && Notification.permission === 'granted'){
+        try{ new Notification('Court follow-up: ' + c.tenant_name, { body: 'Check in with the attorney about the hearing.' }); }
         catch(e){ /* ignore */ }
       }
     }
@@ -2361,7 +2419,22 @@ function renderRemindersBanner(due){
     return;
   }
   banner.classList.add('show');
-  list.innerHTML = due.map(t => {
+  list.innerHTML = due.map(item => {
+    if(item.kind === 'hearing'){
+      const c = item.data;
+      return `
+      <div class="reminder-item">
+        <div class="r-info">
+          <span>Follow up with attorney: ${escapeHtml(c.tenant_name)}${c.apartment ? ' (Apt ' + escapeHtml(c.apartment) + ')' : ''}</span>
+          <span class="r-time">Hearing was ${fmtDate(c.next_hearing_date)}</span>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="rem-open" data-kind="hearing" data-id="${c.id}" data-property="${c.property_id}">Open</button>
+          <button type="button" class="rem-dismiss" data-kind="hearing" data-id="${c.id}">Dismiss</button>
+        </div>
+      </div>`;
+    }
+    const t = item.data;
     let label;
     if(t.reminder.type === 'daily') label = 'Daily at ' + fmtTime(t.reminder.time);
     else if(t.reminder.type === 'weekly') label = 'Weekly at ' + fmtTime(t.reminder.time) + (t.dueDate ? ' · until ' + fmtDate(t.dueDate) : '');
@@ -2373,22 +2446,34 @@ function renderRemindersBanner(due){
         <span class="r-time">${label}</span>
       </div>
       <div style="display:flex; gap:6px;">
-        <button type="button" class="rem-open" data-ticket-id="${t.id}">Open</button>
-        <button type="button" class="rem-dismiss" data-ticket-id="${t.id}">Dismiss</button>
+        <button type="button" class="rem-open" data-kind="ticket" data-id="${t.id}">Open</button>
+        <button type="button" class="rem-dismiss" data-kind="ticket" data-id="${t.id}">Dismiss</button>
       </div>
     </div>
   `;
   }).join('');
 
   list.querySelectorAll('.rem-open').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const t = tickets.find(x => x.id === btn.dataset.ticketId);
-      if(t) openModal(t);
+    btn.addEventListener('click', async () => {
+      if(btn.dataset.kind === 'hearing'){
+        selectedPropertyId = btn.dataset.property;
+        renderPropertySelector();
+        showCourtView();
+        await loadCourtCases();
+        openCaseDetail(btn.dataset.id);
+      } else {
+        const t = tickets.find(x => x.id === btn.dataset.id);
+        if(t) openModal(t);
+      }
     });
   });
   list.querySelectorAll('.rem-dismiss').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const t = tickets.find(x => x.id === btn.dataset.ticketId);
+      if(btn.dataset.kind === 'hearing'){
+        await dismissHearingFollowup(btn.dataset.id);
+        return;
+      }
+      const t = tickets.find(x => x.id === btn.dataset.id);
       if(!t || !t.reminder) return;
       if(t.reminder.type === 'once'){
         await clearReminder(t.id);
@@ -2437,6 +2522,7 @@ if('Notification' in window){
 setInterval(async () => {
   if(multiPropertyMode){
     await loadTickets(); // pulls in changes from other devices too
+    await refreshHearingFollowups();
   } else {
     checkReminders();
   }
@@ -2530,6 +2616,7 @@ async function handleSignedIn(){
     if(!ok) return; // showSetupScreen() already called
     showApp();
     await loadTickets();
+    await refreshHearingFollowups();
   } else {
     showApp();
     await loadTickets();
@@ -2930,6 +3017,7 @@ function renderCourtCasesList(){
       <h3>${escapeHtml(k.tenant_name)}${k.apartment ? ' — Apt ' + escapeHtml(k.apartment) : ''}</h3>
       <p class="desc">
         ${lp ? `Petition: ${fmtMoney(lp.amount)} (${fmtDate(lp.petition_date)})` : 'No petitions recorded yet'}
+        ${k.next_hearing_date ? `<br>Next hearing: ${fmtDate(k.next_hearing_date)}` : ''}
       </p>
       <div class="case-stats">
         <div class="case-stat"><span class="case-stat-label">Balance owed</span><span class="case-stat-value">${fmtMoney(balanceOwed(k))}</span></div>
@@ -2951,6 +3039,7 @@ document.getElementById('btnNewCase').addEventListener('click', () => {
   document.getElementById('caseOriginalAmount').value = '';
   document.getElementById('caseOriginalDate').value = '';
   document.getElementById('caseMonthlyRent').value = '';
+  document.getElementById('caseNextHearing').value = '';
   document.getElementById('newCaseMsg').className = 'login-msg';
 
   const owned = properties.filter(p => p.role === 'owner');
@@ -2978,6 +3067,7 @@ document.getElementById('btnCreateCase').addEventListener('click', async () => {
   const originalDate = document.getElementById('caseOriginalDate').value;
   const monthlyRent = parseFloat(document.getElementById('caseMonthlyRent').value) || 0;
   const targetPropertyId = document.getElementById('caseProperty').value;
+  const nextHearing = document.getElementById('caseNextHearing').value;
 
   if(!tenantName || isNaN(originalAmount) || !originalDate){
     msgEl.className = 'login-msg error';
@@ -2998,6 +3088,7 @@ document.getElementById('btnCreateCase').addEventListener('click', async () => {
       case_number: caseNumber,
       status: 'open',
       monthly_rent: monthlyRent,
+      next_hearing_date: nextHearing || null,
       created_by: currentUserId
     }).select('id').single();
     if(error) throw error;
@@ -3012,6 +3103,7 @@ document.getElementById('btnCreateCase').addEventListener('click', async () => {
 
     document.getElementById('newCaseOverlay').classList.remove('open');
     if(targetPropertyId === selectedPropertyId) await loadCourtCases();
+    await refreshHearingFollowups();
   }catch(err){
     console.error('Create case failed', err);
     msgEl.className = 'login-msg error';
@@ -3028,6 +3120,7 @@ async function openCaseDetail(caseId){
   document.getElementById('caseDetailSub').textContent = k.case_number ? `Case #${k.case_number}` : 'No case number on file';
   document.getElementById('caseStatusSelect').value = k.status;
   document.getElementById('caseMonthlyRentEdit').value = k.monthly_rent || '';
+  document.getElementById('caseNextHearingEdit').value = k.next_hearing_date || '';
 
   renderCaseSummary(k);
   renderRentChargeList(k);
@@ -3049,6 +3142,7 @@ document.getElementById('caseStatusSelect').addEventListener('change', async (e)
   const { error } = await supabaseClient.from('court_cases').update({ status: e.target.value }).eq('id', currentCaseId);
   if(error){ console.error(error); return; }
   await loadCourtCases();
+  await refreshHearingFollowups();
   const k = courtCases.find(c => c.id === currentCaseId);
   if(k) renderCaseSummary(k);
 });
@@ -3089,6 +3183,17 @@ document.getElementById('btnSaveMonthlyRent').addEventListener('click', async ()
   await loadCourtCases();
   const k = courtCases.find(c => c.id === currentCaseId);
   if(k){ renderCaseSummary(k); renderRentChargeList(k); }
+});
+
+document.getElementById('btnSaveHearingDate').addEventListener('click', async () => {
+  const val = document.getElementById('caseNextHearingEdit').value || null;
+  const { error } = await supabaseClient.from('court_cases').update({
+    next_hearing_date: val,
+    hearing_followup_dismissed: false // a new/changed hearing date means a fresh follow-up is owed
+  }).eq('id', currentCaseId);
+  if(error){ alert('Could not save: ' + error.message); return; }
+  await loadCourtCases();
+  await refreshHearingFollowups();
 });
 
 function renderPetitionList(k){
@@ -3170,6 +3275,7 @@ function wireEnterToSubmit(inputIds, buttonId){
   });
 }
 wireEnterToSubmit(['caseMonthlyRentEdit'], 'btnSaveMonthlyRent');
+wireEnterToSubmit(['caseNextHearingEdit'], 'btnSaveHearingDate');
 wireEnterToSubmit(['newPetitionDate', 'newPetitionAmount', 'newPetitionNote'], 'btnAddPetition');
 wireEnterToSubmit(['newPaymentDate', 'newPaymentAmount', 'newPaymentNote'], 'btnAddPayment');
 wireEnterToSubmit(['newCostDate', 'newCostAmount', 'newCostDesc'], 'btnAddCost');
