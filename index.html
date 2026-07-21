@@ -2933,7 +2933,7 @@ function renderCourtCasesList(){
       </p>
       <div class="case-stats">
         <div class="case-stat"><span class="case-stat-label">Balance owed</span><span class="case-stat-value">${fmtMoney(balanceOwed(k))}</span></div>
-        <div class="case-stat"><span class="case-stat-label">Remaining to satisfy</span><span class="case-stat-value">${fmtMoney(remainingOnPetition(k))}</span></div>
+        <div class="case-stat"><span class="case-stat-label">Balance to satisfy petition</span><span class="case-stat-value">${fmtMoney(remainingOnPetition(k))}</span></div>
         <div class="case-stat full"><span class="case-stat-label">Legal costs</span><span class="case-stat-value">${fmtMoney(totalCosts(k))}</span></div>
       </div>
     </div>`;
@@ -3070,7 +3070,7 @@ function renderCaseSummary(k){
     <div class="admin-row"><span>Original amount sued for</span><span>${k.petitions.length ? fmtMoney(k.petitions[0].amount) + ' (' + fmtDate(k.petitions[0].petition_date) + ')' : '—'}</span></div>
     <div class="admin-row"><span>Current petition amount</span><span>${lp ? fmtMoney(lp.amount) + ' (' + fmtDate(lp.petition_date) + ')' : '—'}</span></div>
     <div class="admin-row"><span>Payments since last petition</span><span>${fmtMoney(paymentsSinceLastPetition(k))}</span></div>
-    <div class="admin-row"><span>Remaining on petition until satisfied</span><span>${fmtMoney(remainingOnPetition(k))}</span></div>
+    <div class="admin-row"><span>Balance to satisfy petition</span><span>${fmtMoney(remainingOnPetition(k))}</span></div>
     <div class="admin-row"><span>Total legal costs so far</span><span>${fmtMoney(totalCosts(k))}</span></div>
   `;
 }
