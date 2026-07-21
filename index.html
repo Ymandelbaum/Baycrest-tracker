@@ -1048,6 +1048,10 @@
       <label for="caseTenantName">Tenant name</label>
       <input type="text" id="caseTenantName">
     </div>
+    <div class="field">
+      <label for="caseProperty">Building</label>
+      <select id="caseProperty"></select>
+    </div>
     <div class="row2">
       <div class="field">
         <label for="caseApartment">Apartment</label>
@@ -1263,8 +1267,14 @@ function ticketNumber(n){ return 'WO-' + String(n).padStart(4,'0'); }
 
 function fmtDate(iso){
   if(!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined,{month:'short', day:'numeric'});
+  // Parse "YYYY-MM-DD" as a local date, not UTC — new Date(iso) treats
+  // date-only strings as UTC midnight, which rolls back a day when
+  // displayed in a timezone behind UTC (e.g. US timezones).
+  const datePart = iso.slice(0, 10);
+  const [y, m, d] = datePart.split('-').map(Number);
+  if(!y || !m || !d) return '';
+  const date = new Date(y, m - 1, d);
+  return date.toLocaleDateString(undefined,{month:'short', day:'numeric'});
 }
 
 async function loadTickets(){
@@ -2881,15 +2891,12 @@ function renderCourtCasesList(){
       <div class="perf"><span class="tnum">${escapeHtml(k.case_number || 'No case #')}</span></div>
       <h3>${escapeHtml(k.tenant_name)}${k.apartment ? ' — Apt ' + escapeHtml(k.apartment) : ''}</h3>
       <p class="desc">
-        ${lp ? `Petition: ${fmtMoney(lp.amount)} (${fmtDate(lp.petition_date)})` : 'No petitions recorded yet'}
+        ${lp ? `Petition dated ${fmtDate(lp.petition_date)}` : 'No petitions recorded yet'}
       </p>
-      <div class="meta">
-        <span>Balance owed: ${fmtMoney(balanceOwed(k))}</span>
-        <span>Remaining on petition: ${fmtMoney(remainingOnPetition(k))}</span>
-      </div>
-      <div class="card-badges">
-        <span class="badge">Legal costs: ${fmtMoney(totalCosts(k))}</span>
-      </div>
+      <div class="admin-row"><span>Petition amount</span><span>${fmtMoney(lp ? lp.amount : 0)}</span></div>
+      <div class="admin-row"><span>Balance owed</span><span>${fmtMoney(balanceOwed(k))}</span></div>
+      <div class="admin-row"><span>Legal costs</span><span>${fmtMoney(totalCosts(k))}</span></div>
+      <div class="admin-row"><span>Remaining to satisfy petition</span><span>${fmtMoney(remainingOnPetition(k))}</span></div>
     </div>`;
   }).join('');
 
@@ -2904,7 +2911,15 @@ document.getElementById('btnNewCase').addEventListener('click', () => {
   document.getElementById('caseNumber').value = '';
   document.getElementById('caseOriginalAmount').value = '';
   document.getElementById('caseOriginalDate').value = '';
+  document.getElementById('caseMonthlyRent').value = '';
   document.getElementById('newCaseMsg').className = 'login-msg';
+
+  const owned = properties.filter(p => p.role === 'owner');
+  const sel = document.getElementById('caseProperty');
+  sel.innerHTML = owned.map(p =>
+    `<option value="${p.id}" ${p.id === selectedPropertyId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+  ).join('');
+
   document.getElementById('newCaseOverlay').classList.add('open');
 });
 document.getElementById('btnCloseNewCase').addEventListener('click', () => {
@@ -2923,16 +2938,22 @@ document.getElementById('btnCreateCase').addEventListener('click', async () => {
   const originalAmount = parseFloat(document.getElementById('caseOriginalAmount').value);
   const originalDate = document.getElementById('caseOriginalDate').value;
   const monthlyRent = parseFloat(document.getElementById('caseMonthlyRent').value) || 0;
+  const targetPropertyId = document.getElementById('caseProperty').value;
 
   if(!tenantName || isNaN(originalAmount) || !originalDate){
     msgEl.className = 'login-msg error';
     msgEl.textContent = 'Tenant name, original amount, and original date are required.';
     return;
   }
+  if(!targetPropertyId){
+    msgEl.className = 'login-msg error';
+    msgEl.textContent = 'Pick which building this case is for.';
+    return;
+  }
 
   try{
     const { data: newCase, error } = await supabaseClient.from('court_cases').insert({
-      property_id: selectedPropertyId,
+      property_id: targetPropertyId,
       tenant_name: tenantName,
       apartment,
       case_number: caseNumber,
@@ -2951,7 +2972,7 @@ document.getElementById('btnCreateCase').addEventListener('click', async () => {
     if(petError) throw petError;
 
     document.getElementById('newCaseOverlay').classList.remove('open');
-    await loadCourtCases();
+    if(targetPropertyId === selectedPropertyId) await loadCourtCases();
   }catch(err){
     console.error('Create case failed', err);
     msgEl.className = 'login-msg error';
@@ -3094,6 +3115,25 @@ document.getElementById('btnAddCost').addEventListener('click', async () => {
   const k = courtCases.find(c => c.id === currentCaseId);
   if(k){ renderCaseSummary(k); renderCostList(k); }
 });
+
+/* Pressing Enter in any of these quick-add rows submits, same as
+   clicking the button — no need to reach for the mouse each time. */
+function wireEnterToSubmit(inputIds, buttonId){
+  inputIds.forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        document.getElementById(buttonId).click();
+      }
+    });
+  });
+}
+wireEnterToSubmit(['caseMonthlyRentEdit'], 'btnSaveMonthlyRent');
+wireEnterToSubmit(['newPetitionDate', 'newPetitionAmount', 'newPetitionNote'], 'btnAddPetition');
+wireEnterToSubmit(['newPaymentDate', 'newPaymentAmount', 'newPaymentNote'], 'btnAddPayment');
+wireEnterToSubmit(['newCostDate', 'newCostAmount', 'newCostDesc'], 'btnAddCost');
 
 init();
 </script>
