@@ -845,6 +845,16 @@
   }
   .case-stat-value{ font-size:14.5px; font-weight:600; color:var(--ink); }
 
+  .admin-row .inline-edit-input{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--ink);
+    border-radius:6px;
+    padding:5px 8px;
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+  }
+
   ::-webkit-scrollbar{ width:8px; height:8px; }
   ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
 </style>
@@ -3206,8 +3216,18 @@ function renderCaseSummary(k){
 function renderRentChargeList(k){
   const el = document.getElementById('rentChargeList');
   el.innerHTML = k.rentCharges.length
-    ? [...k.rentCharges].reverse().map(r => `<div class="admin-row"><span>${fmtDate(r.charge_date)} — ${fmtMoney(r.amount)} rent added</span><button type="button" class="admin-remove" data-table="court_case_rent_charges" data-id="${r.id}">Remove</button></div>`).join('')
+    ? [...k.rentCharges].reverse().map(r => `
+      <div class="admin-row" style="justify-content:flex-start; flex-wrap:wrap;">
+        <input type="date" class="inline-edit-input" data-field="charge_date" value="${r.charge_date}" style="flex:0 0 140px;">
+        <input type="number" step="0.01" class="inline-edit-input" data-field="amount" value="${r.amount}" style="flex:0 0 100px;">
+        <button type="button" class="admin-remove save-row" data-id="${r.id}">Save</button>
+        <button type="button" class="admin-remove" data-table="court_case_rent_charges" data-id="${r.id}">Remove</button>
+      </div>
+    `).join('')
     : '<span class="admin-empty">No rent charges yet — they start accruing the month after the case opened.</span>';
+  wireLogSaveButtons(el, 'court_case_rent_charges', [
+    { name: 'charge_date', type: 'date' }, { name: 'amount', type: 'number' }
+  ], renderRentChargeList);
   wireLogDeleteButtons(el, k, renderRentChargeList);
 }
 
@@ -3217,6 +3237,35 @@ function wireLogDeleteButtons(el, k, rerenderFn){
       if(!confirm('Remove this entry?')) return;
       const { error } = await supabaseClient.from(btn.dataset.table).delete().eq('id', btn.dataset.id);
       if(error){ alert('Could not remove: ' + error.message); return; }
+      await loadCourtCases();
+      const updated = courtCases.find(c => c.id === currentCaseId);
+      if(updated){ renderCaseSummary(updated); rerenderFn(updated); }
+    });
+  });
+}
+
+function wireLogSaveButtons(el, table, fields, rerenderFn){
+  el.querySelectorAll('.save-row').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const row = btn.closest('.admin-row');
+      const payload = {};
+      let valid = true;
+      fields.forEach(f => {
+        if(!valid) return;
+        const input = row.querySelector(`[data-field="${f.name}"]`);
+        if(!input) return;
+        if(f.type === 'number'){
+          const val = parseFloat(input.value);
+          if(isNaN(val)){ alert('Enter a valid amount.'); valid = false; return; }
+          payload[f.name] = val;
+        } else {
+          payload[f.name] = input.value.trim() || (f.type === 'date' ? null : '');
+        }
+      });
+      if(!valid) return;
+      const { error } = await supabaseClient.from(table).update(payload).eq('id', id);
+      if(error){ alert('Could not save: ' + error.message); return; }
       await loadCourtCases();
       const updated = courtCases.find(c => c.id === currentCaseId);
       if(updated){ renderCaseSummary(updated); rerenderFn(updated); }
@@ -3286,22 +3335,55 @@ document.getElementById('btnSaveCaseInfo').addEventListener('click', async () =>
 function renderPetitionList(k){
   const el = document.getElementById('petitionList');
   el.innerHTML = k.petitions.length
-    ? [...k.petitions].reverse().map(p => `<div class="admin-row"><span>${fmtDate(p.petition_date)} — ${fmtMoney(p.amount)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span><button type="button" class="admin-remove" data-table="court_case_petitions" data-id="${p.id}">Remove</button></div>`).join('')
+    ? [...k.petitions].reverse().map(p => `
+      <div class="admin-row" style="justify-content:flex-start; flex-wrap:wrap;">
+        <input type="date" class="inline-edit-input" data-field="petition_date" value="${p.petition_date}" style="flex:0 0 140px;">
+        <input type="number" step="0.01" class="inline-edit-input" data-field="amount" value="${p.amount}" style="flex:0 0 100px;">
+        <input type="text" class="inline-edit-input" data-field="note" value="${escapeAttr(p.note || '')}" placeholder="Note" style="flex:1; min-width:100px;">
+        <button type="button" class="admin-remove save-row" data-id="${p.id}">Save</button>
+        <button type="button" class="admin-remove" data-table="court_case_petitions" data-id="${p.id}">Remove</button>
+      </div>
+    `).join('')
     : '<span class="admin-empty">No petitions recorded.</span>';
+  wireLogSaveButtons(el, 'court_case_petitions', [
+    { name: 'petition_date', type: 'date' }, { name: 'amount', type: 'number' }, { name: 'note', type: 'text' }
+  ], renderPetitionList);
   wireLogDeleteButtons(el, k, renderPetitionList);
 }
 function renderPaymentList(k){
   const el = document.getElementById('paymentList');
   el.innerHTML = k.payments.length
-    ? [...k.payments].reverse().map(p => `<div class="admin-row"><span>${fmtDate(p.payment_date)} — ${fmtMoney(p.amount)}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span><button type="button" class="admin-remove" data-table="court_case_payments" data-id="${p.id}">Remove</button></div>`).join('')
+    ? [...k.payments].reverse().map(p => `
+      <div class="admin-row" style="justify-content:flex-start; flex-wrap:wrap;">
+        <input type="date" class="inline-edit-input" data-field="payment_date" value="${p.payment_date}" style="flex:0 0 140px;">
+        <input type="number" step="0.01" class="inline-edit-input" data-field="amount" value="${p.amount}" style="flex:0 0 100px;">
+        <input type="text" class="inline-edit-input" data-field="note" value="${escapeAttr(p.note || '')}" placeholder="Note" style="flex:1; min-width:100px;">
+        <button type="button" class="admin-remove save-row" data-id="${p.id}">Save</button>
+        <button type="button" class="admin-remove" data-table="court_case_payments" data-id="${p.id}">Remove</button>
+      </div>
+    `).join('')
     : '<span class="admin-empty">No payments recorded.</span>';
+  wireLogSaveButtons(el, 'court_case_payments', [
+    { name: 'payment_date', type: 'date' }, { name: 'amount', type: 'number' }, { name: 'note', type: 'text' }
+  ], renderPaymentList);
   wireLogDeleteButtons(el, k, renderPaymentList);
 }
 function renderCostList(k){
   const el = document.getElementById('costList');
   el.innerHTML = k.costs.length
-    ? [...k.costs].reverse().map(c => `<div class="admin-row"><span>${c.cost_date ? fmtDate(c.cost_date) + ' — ' : ''}${fmtMoney(c.amount)}${c.description ? ' · ' + escapeHtml(c.description) : ''}</span><button type="button" class="admin-remove" data-table="court_case_costs" data-id="${c.id}">Remove</button></div>`).join('')
+    ? [...k.costs].reverse().map(c => `
+      <div class="admin-row" style="justify-content:flex-start; flex-wrap:wrap;">
+        <input type="date" class="inline-edit-input" data-field="cost_date" value="${c.cost_date || ''}" style="flex:0 0 140px;">
+        <input type="number" step="0.01" class="inline-edit-input" data-field="amount" value="${c.amount}" style="flex:0 0 100px;">
+        <input type="text" class="inline-edit-input" data-field="description" value="${escapeAttr(c.description || '')}" placeholder="Description" style="flex:1; min-width:100px;">
+        <button type="button" class="admin-remove save-row" data-id="${c.id}">Save</button>
+        <button type="button" class="admin-remove" data-table="court_case_costs" data-id="${c.id}">Remove</button>
+      </div>
+    `).join('')
     : '<span class="admin-empty">No costs recorded.</span>';
+  wireLogSaveButtons(el, 'court_case_costs', [
+    { name: 'cost_date', type: 'date' }, { name: 'amount', type: 'number' }, { name: 'description', type: 'text' }
+  ], renderCostList);
   wireLogDeleteButtons(el, k, renderCostList);
 }
 
