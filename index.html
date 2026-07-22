@@ -3282,15 +3282,41 @@ function renderRentChargeList(k){
   wireLogDeleteButtons(el, k, renderRentChargeList);
 }
 
+/* Recomputes every already-generated rent charge against the current
+   rate history and fixes any that no longer match — this is what makes
+   adding/editing/removing a rent rate apply automatically to past
+   months too, not just new ones going forward. */
+async function recalculateAllRentCharges(caseId){
+  const kase = courtCases.find(c => c.id === caseId);
+  if(!kase) return;
+  const updates = [];
+  for(const charge of kase.rentCharges){
+    const monthDate = new Date(charge.charge_date + 'T00:00:00');
+    const correctAmt = rateForMonth(kase, monthDate);
+    if(correctAmt > 0 && Number(charge.amount) !== correctAmt){
+      updates.push({ id: charge.id, amount: correctAmt });
+    }
+  }
+  for(const u of updates){
+    const { error } = await supabaseClient.from('court_case_rent_charges').update({ amount: u.amount }).eq('id', u.id);
+    if(error) console.error('Recalculate rent charge failed', error);
+  }
+}
+
 function wireLogDeleteButtons(el, k, rerenderFn){
   el.querySelectorAll('.admin-remove').forEach(btn => {
     btn.addEventListener('click', async () => {
       if(!confirm('Remove this entry?')) return;
-      const { error } = await supabaseClient.from(btn.dataset.table).delete().eq('id', btn.dataset.id);
+      const table = btn.dataset.table;
+      const { error } = await supabaseClient.from(table).delete().eq('id', btn.dataset.id);
       if(error){ alert('Could not remove: ' + error.message); return; }
       await loadCourtCases();
+      if(table === 'court_case_rent_rates'){
+        await recalculateAllRentCharges(currentCaseId);
+        await loadCourtCases();
+      }
       const updated = courtCases.find(c => c.id === currentCaseId);
-      if(updated){ renderCaseSummary(updated); rerenderFn(updated); }
+      if(updated){ renderCaseSummary(updated); rerenderFn(updated); renderRentChargeList(updated); }
     });
   });
 }
@@ -3318,8 +3344,12 @@ function wireLogSaveButtons(el, table, fields, rerenderFn){
       const { error } = await supabaseClient.from(table).update(payload).eq('id', id);
       if(error){ alert('Could not save: ' + error.message); return; }
       await loadCourtCases();
+      if(table === 'court_case_rent_rates'){
+        await recalculateAllRentCharges(currentCaseId);
+        await loadCourtCases();
+      }
       const updated = courtCases.find(c => c.id === currentCaseId);
-      if(updated){ renderCaseSummary(updated); rerenderFn(updated); }
+      if(updated){ renderCaseSummary(updated); rerenderFn(updated); renderRentChargeList(updated); }
     });
   });
 }
@@ -3350,6 +3380,8 @@ document.getElementById('btnAddRentRate').addEventListener('click', async () => 
   if(error){ alert('Could not add: ' + error.message); return; }
   document.getElementById('newRentRateDate').value = '';
   document.getElementById('newRentRateAmount').value = '';
+  await loadCourtCases();
+  await recalculateAllRentCharges(currentCaseId);
   await loadCourtCases();
   const k = courtCases.find(c => c.id === currentCaseId);
   if(k){ renderCaseSummary(k); renderRentRateList(k); renderRentChargeList(k); }
